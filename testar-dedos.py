@@ -1,7 +1,12 @@
+import inspect
+
+if not hasattr(inspect, 'getargspec'):
+    inspect.getargspec = inspect.getfullargspec
+
 from pyfirmata import Arduino,SERVO
 import time
 
-board = Arduino('COM3')
+board = Arduino('COM5')
 
 pin1 = 10
 pin2 = 9
@@ -32,17 +37,17 @@ time.sleep(1)
 rotateServo(pin1,0)
 time.sleep(1)
 
-rotateServo(pin2,130)
+rotateServo(pin2,180)
 time.sleep(1)
 rotateServo(pin2,0)
 time.sleep(1)
 
-rotateServo(pin3,130)
+rotateServo(pin3,180)
 time.sleep(1)
 rotateServo(pin3,0)
 time.sleep(1)
 
-rotateServo(pin4,130)
+rotateServo(pin4,180)
 time.sleep(1)
 rotateServo(pin4,0)
 time.sleep(1)
