@@ -6,17 +6,43 @@ Concentração = Mão fecha | Relaxamento = Mão abre
 import cv2
 import time
 import numpy as np
+import serial
+import json
+import os
 from eeg_brainlink import BrainLinkEEG, BrainLinkData
 import servo_braco3d as mao
 
 # --- Configurações ---
-PORTA_COM_EEG = 'COM5'  # Ajuste conforme sua porta
+PORTA_COM_EEG = 'COM6'  # Ajuste conforme sua porta
 BAUDRATE = 57600
 
 # Thresholds (ajustáveis via calibração)
-THRESHOLD_CONCENTRACAO = 60  # Acima deste valor = concentrado
+THRESHOLD_CONCENTRACAO = 30  # Valor padrão, será substituído pela calibração
 THRESHOLD_RELAXAMENTO = 60   # Acima deste valor = relaxado
 DEBOUNCE_TIME = 1.0  # Segundos para evitar mudanças rápidas
+
+def carregar_calibracao():
+    """Carrega threshold da calibração se existir"""
+    global THRESHOLD_CONCENTRACAO
+    arquivo = 'calibracao_eeg.json'
+    
+    if os.path.exists(arquivo):
+        try:
+            with open(arquivo, 'r', encoding='utf-8') as f:
+                dados = json.load(f)
+            
+            THRESHOLD_CONCENTRACAO = dados.get('threshold', THRESHOLD_CONCENTRACAO)
+            print(f"📂 Calibração carregada de {arquivo}")
+            print(f"   Threshold: {THRESHOLD_CONCENTRACAO}")
+            print(f"   Data: {dados.get('data_calibracao', 'N/A')}")
+            return True
+        except Exception as e:
+            print(f"⚠️  Erro ao carregar calibração: {e}")
+    else:
+        print(f"⚠️  Arquivo de calibração não encontrado.")
+        print(f"   Usando threshold padrão: {THRESHOLD_CONCENTRACAO}")
+        print(f"   Execute: python calibrar_eeg_protocolo.py")
+    return False
 
 # Estados da mão
 ESTADO_ABERTA = 'aberta'
@@ -70,21 +96,19 @@ class ControleEEG:
             self.ultimo_comando = tempo_atual
     
     def _determinar_estado(self, data: BrainLinkData) -> str:
-        """Determina o estado baseado nos valores EEG"""
+        """Determina o estado baseado apenas no nível de ATENÇÃO"""
         # Ignora se sinal ruim
         if data.signal > 100:
             return self.estado_atual
         
-        # Concentração alta = Fechar mão
-        if data.attention > THRESHOLD_CONCENTRACAO:
+        # Lógica simplificada: apenas baseada em atenção
+        # Atenção ALTA (>= threshold) = Fechar mão (concentrado)
+        # Atenção BAIXA (< threshold) = Abrir mão (relaxado)
+        
+        if data.attention >= THRESHOLD_CONCENTRACAO:
             return ESTADO_FECHADA
-        
-        # Relaxamento alto = Abrir mão
-        if data.meditation > THRESHOLD_RELAXAMENTO:
+        else:
             return ESTADO_ABERTA
-        
-        # Caso contrário, mantém estado atual
-        return self.estado_atual
     
     def _executar_comando(self, estado: str):
         """Executa o comando na mão robótica"""
@@ -213,12 +237,43 @@ class ControleEEG:
     
     def iniciar(self):
         """Inicia o sistema de controle EEG"""
+        global THRESHOLD_CONCENTRACAO
+        import sys
+        import platform
+        
         print("=" * 60)
         print("🧠 Sistema de Controle EEG - Mão Robótica")
         print("=" * 60)
-        print(f"Porta COM: {PORTA_COM_EEG}")
-        print(f"Threshold Concentração: {THRESHOLD_CONCENTRACAO}")
-        print(f"Threshold Relaxamento: {THRESHOLD_RELAXAMENTO}")
+        print(f"🐍 Python: {sys.version}")
+        print(f"💻 Sistema: {platform.system()} {platform.release()}")
+        print(f"📦 Pyserial: {serial.__version__}")
+        print("=" * 60)
+        
+        # Carrega calibração se existir
+        carregar_calibracao()
+        
+        # Permite usuário escolher o limiar
+        print("=" * 60)
+        print(f"\n🎯 Limiar atual: {THRESHOLD_CONCENTRACAO}")
+        print("   (Atenção >= limiar = mão FECHA)")
+        print("   (Atenção < limiar = mão ABRE)")
+        
+        try:
+            entrada = input(f"\n📊 Digite novo limiar (ou ENTER para manter {THRESHOLD_CONCENTRACAO}): ").strip()
+            if entrada:
+                novo_limiar = int(entrada)
+                if 0 <= novo_limiar <= 100:
+                    THRESHOLD_CONCENTRACAO = novo_limiar
+                    print(f"✅ Limiar alterado para: {THRESHOLD_CONCENTRACAO}")
+                else:
+                    print("⚠️  Valor deve estar entre 0 e 100. Mantendo valor atual.")
+        except ValueError:
+            print("⚠️  Entrada inválida. Mantendo valor atual.")
+        
+        print("=" * 60)
+        print(f"� Porta COM: {PORTA_COM_EEG}")
+        print(f"🔧 Baudrate: {BAUDRATE}")
+        print(f"�📊 Threshold Concentração: {THRESHOLD_CONCENTRACAO}")
         print("=" * 60)
         
         # Conecta ao EEG

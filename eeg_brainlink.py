@@ -5,7 +5,9 @@ Compatível com Python 3.13+
 """
 
 import serial
+import serial.tools.list_ports
 import time
+import traceback
 from collections import deque
 from typing import Callable, Optional
 
@@ -192,13 +194,64 @@ class BrainLinkEEG:
         
     def connect(self) -> bool:
         """Conecta ao Brain-link Pro"""
+        print("\n" + "="*60)
+        print("🔍 DEBUG: Iniciando processo de conexão...")
+        print("="*60)
+        
+        # Lista todas as portas disponíveis
+        print("\n📋 Portas COM disponíveis:")
+        portas = list(serial.tools.list_ports.comports())
+        if not portas:
+            print("   ⚠️  Nenhuma porta COM encontrada!")
+        else:
+            for porta in portas:
+                print(f"   • {porta.device}: {porta.description}")
+                print(f"     - HWID: {porta.hwid}")
+                print(f"     - VID:PID: {porta.vid}:{porta.pid}")
+                print(f"     - Fabricante: {porta.manufacturer}")
+        
+        print(f"\n🎯 Tentando conectar em: {self.port}")
+        print(f"   - Baudrate: {self.baudrate}")
+        print(f"   - Timeout: 1s")
+        
+        # Verifica se a porta solicitada existe
+        portas_disponiveis = [p.device for p in portas]
+        if self.port not in portas_disponiveis:
+            print(f"\n⚠️  AVISO: {self.port} não está na lista de portas disponíveis!")
+            print(f"   Portas disponíveis: {portas_disponiveis}")
+        
         try:
+            print("\n🔌 Abrindo conexão serial...")
+            # Usando mesma sintaxe do testar_eeg.py que funciona
             self.serial = serial.Serial(self.port, self.baudrate, timeout=1)
+            print(f"   ✓ Porta aberta: {self.serial.is_open}")
+            print(f"   ✓ Nome: {self.serial.name}")
+            print(f"   ✓ Baudrate: {self.serial.baudrate}")
+            
             self.parser = BrainLinkParser(self._on_eeg_data)
-            print(f"✅ Conectado ao Brain-link Pro na porta {self.port}")
+            print(f"\n✅ Conectado ao Brain-link Pro na porta {self.port}")
+            print("="*60 + "\n")
             return True
+            
         except serial.SerialException as e:
-            print(f"❌ Erro ao conectar: {e}")
+            print(f"\n❌ SerialException: {e}")
+            print(f"   Tipo do erro: {type(e).__name__}")
+            print(f"\n📝 Stack trace:")
+            traceback.print_exc()
+            print("\n💡 Possíveis soluções:")
+            print("   1. Feche outros programas que usam a porta (Termite, Arduino IDE, etc.)")
+            print("   2. Desconecte e reconecte o dispositivo USB")
+            print("   3. Verifique se o driver Bluetooth está instalado")
+            print("   4. Tente reiniciar o computador")
+            print("   5. Verifique no Gerenciador de Dispositivos")
+            print("="*60 + "\n")
+            return False
+            
+        except Exception as e:
+            print(f"\n❌ Erro inesperado: {e}")
+            print(f"   Tipo: {type(e).__name__}")
+            traceback.print_exc()
+            print("="*60 + "\n")
             return False
     
     def disconnect(self):
