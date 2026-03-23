@@ -1,0 +1,9 @@
+v2.1 05/07/2010
+----
+- Updated console example to work with VS2003
+
+v2.2 12/11/2010
+----
+- Updated console example to work with VS2008
+- added 64 bit libraries to windows SDK
+- Updated console example to compile 64-bit application

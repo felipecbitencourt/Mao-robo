@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{15cb4335-b6fb-418f-96f7-e8ca73215ce2}</UniqueIdentifier>
+      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93d2dc93-7f4d-40f7-ace4-9785eb7719bc}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{0cb265b2-3945-493c-a269-eb87d1472d11}</UniqueIdentifier>
+      <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe</Extensions>
+    </Filter>
+    <Filter Include="Dependencies">
+      <UniqueIdentifier>{7033a7b7-445d-4ad1-b443-759e2db9edba}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dependencies\Debug">
+      <UniqueIdentifier>{d398b235-5eba-452c-aa01-dea61dbc0db5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dependencies\Release">
+      <UniqueIdentifier>{664ae1bd-682c-45da-b4b2-e765154d1a30}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="testglove.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="..\..\fgloved.dll">
+      <Filter>Dependencies\Debug</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\..\fglove.dll">
+      <Filter>Dependencies\Release</Filter>
+    </CustomBuild>
+    <CustomBuild Include="..\..\fglove64.dll">
+      <Filter>Dependencies\Release</Filter>
+    </CustomBuild>
+  </ItemGroup>
+</Project>
