@@ -67,17 +67,21 @@ style.configure('Secondary.TButton',
 style.map('Secondary.TButton',
     background=[('active', '#1a4a7a'), ('pressed', '#0a2a4a')])
 
+def open_browser():
+    import webbrowser
+    webbrowser.open("http://localhost:5173")
+
 # --- Header ---
 header_frame = tk.Frame(root, bg=BG_COLOR)
 header_frame.pack(fill='x', pady=(40, 20))
 
 # Icone/Emoji de mao
-icon_label = tk.Label(header_frame, text="🤖", font=('Segoe UI Emoji', 36), bg=BG_COLOR)
+icon_label = tk.Label(header_frame, text="🚀", font=('Segoe UI Emoji', 36), bg=BG_COLOR)
 icon_label.pack()
 
 # Titulo
 title_label = tk.Label(header_frame, 
-    text="Mão Robótica",
+    text="Mão Robótica Pro",
     font=('Segoe UI', 24, 'bold'),
     bg=BG_COLOR,
     fg=TEXT_COLOR)
@@ -85,7 +89,7 @@ title_label.pack(pady=(10, 0))
 
 # Subtitulo
 subtitle_label = tk.Label(header_frame,
-    text="Sistema de Controle por Gestos",
+    text="Dashboard React + IA Python",
     font=('Segoe UI', 10),
     bg=BG_COLOR,
     fg=TEXT_MUTED)
@@ -95,19 +99,19 @@ subtitle_label.pack()
 button_frame = tk.Frame(root, bg=BG_COLOR)
 button_frame.pack(fill='both', expand=True, padx=50, pady=20)
 
-# Botao Principal
+# Botao Principal (Servidor)
 btn_main = ttk.Button(button_frame, 
-    text="▶  Iniciar Controle",
+    text="🖥️  1. Iniciar Servidor (Backend)",
     style='Primary.TButton',
-    command=lambda: run_script("main.py"))
+    command=lambda: run_script("server.py"))
 btn_main.pack(fill='x', pady=10)
 
-# Botao Secundario
-btn_test = ttk.Button(button_frame,
-    text="🔧  Testar Servos",
+# Botao Secundario (Browser)
+btn_browser = ttk.Button(button_frame,
+    text="🌐  2. Abrir Dashboard (Browser)",
     style='Secondary.TButton',
-    command=lambda: run_script("testar-dedos.py"))
-btn_test.pack(fill='x', pady=10)
+    command=open_browser)
+btn_browser.pack(fill='x', pady=10)
 
 # --- Footer ---
 footer_frame = tk.Frame(root, bg=BG_COLOR)
