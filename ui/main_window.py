@@ -2,7 +2,7 @@ import sys
 from PySide6.QtCore import Qt, QTimer, Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QPalette, QIcon, QFont
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QPushButton, QLabel, QFrame, QSplitter, QGraphicsDropShadowEffect)
+                             QPushButton, QLabel, QFrame, QSplitter, QGraphicsDropShadowEffect, QLineEdit)
 
 from core.hub_controller import HubController
 from ui.components.video_display import VideoDisplay
@@ -84,6 +84,29 @@ class MainWindow(QMainWindow):
         
         self.btn_eeg = AnimatedButton("🧠 EEG BRAINLINK", accent_color="#F59E0B")
         sidebar_layout.addWidget(self.btn_eeg)
+
+        sidebar_layout.addSpacing(30)
+        
+        # Seção de Saída
+        sidebar_layout.addWidget(QLabel("CONTROLE DE SAÍDA"))
+        
+        # Campo para Porta COM
+        port_layout = QHBoxLayout()
+        port_layout.addWidget(QLabel("Porta:"))
+        self.port_edit = QLineEdit("COM5")
+        self.port_edit.setStyleSheet("background-color: #1A1A2E; color: white; padding: 5px;")
+        self.port_edit.textChanged.connect(self._update_port)
+        port_layout.addWidget(self.port_edit)
+        sidebar_layout.addLayout(port_layout)
+
+        self.btn_output_hand = AnimatedButton("🦾 MÃO ROBÓTICA: OFF", accent_color="#EF4444")
+        self.btn_output_hand.setCheckable(True)
+        self.btn_output_hand.toggled.connect(self._toggle_output_hand)
+        sidebar_layout.addWidget(self.btn_output_hand)
+        
+        self.btn_test_hand = AnimatedButton("⚙️ TESTAR SERVOS", accent_color="#3B82F6")
+        self.btn_test_hand.clicked.connect(self.controller.test_arduino_hand)
+        sidebar_layout.addWidget(self.btn_test_hand)
         
         sidebar_layout.addStretch()
         
@@ -163,6 +186,22 @@ class MainWindow(QMainWindow):
         # Montagem Final
         main_layout.addWidget(self.sidebar)
         main_layout.addWidget(self.central_content)
+
+    def _update_port(self, text):
+        """Atualiza a porta serial dinamicamente"""
+        if self.controller.arduino:
+            self.controller.arduino.port = text
+            print(f"DEBUG HUB: Porta alterada para {text}")
+
+    def _toggle_output_hand(self, checked):
+        if checked:
+            self.btn_output_hand.setText("🦾 MÃO ROBÓTICA: ON")
+            self.btn_output_hand.setStyleSheet("background-color: #10B981; color: white; font-weight: bold; border-radius: 8px;")
+            self.controller.set_hand_output(True)
+        else:
+            self.btn_output_hand.setText("🦾 MÃO ROBÓTICA: OFF")
+            self.btn_output_hand.setStyleSheet("background-color: #0f3460; color: white; border-radius: 8px;")
+            self.controller.set_hand_output(False)
 
     def update_status_bar(self, message):
         self.status_bar_label.setText(f"📡 {message.upper()}")
