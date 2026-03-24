@@ -38,9 +38,13 @@ class HandProcessor(QThread):
             self.frame_queue.put(frame)
 
     def run(self):
+        # Carrega o modelo como buffer para evitar problemas com caracteres especiais no caminho (ex: "Códigos")
+        with open(self.model_path, 'rb') as f:
+            model_buffer = f.read()
+
         # Inicializa o detector
         options = self.HandLandmarkerOptions(
-            base_options=self.BaseOptions(model_asset_path=self.model_path),
+            base_options=self.BaseOptions(model_asset_buffer=model_buffer),
             running_mode=self.VisionRunningMode.VIDEO,
             num_hands=1,
             min_hand_detection_confidence=0.5,
@@ -48,6 +52,7 @@ class HandProcessor(QThread):
             min_tracking_confidence=0.5
         )
         self.detector = self.HandLandmarker.create_from_options(options)
+
         self.running = True
         
         while self.running:

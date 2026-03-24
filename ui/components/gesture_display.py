@@ -24,9 +24,11 @@ class GestureDisplay(QLabel):
         img_path = os.path.join(self.images_path, img_name)
         
         if os.path.exists(img_path):
+            # print(f"DEBUG GESTURE: Carregando {img_path}")
             pixmap = QPixmap(img_path)
             scaled_pixmap = pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.setPixmap(scaled_pixmap)
         else:
+            print(f"DEBUG GESTURE: Arquivo NAO encontrado: {img_path}")
             self.setText(f"GESTO {gesture_id}\n(Imagem ausente)")
             self.setPixmap(QPixmap())

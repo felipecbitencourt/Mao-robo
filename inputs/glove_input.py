@@ -46,6 +46,9 @@ class GloveInput(QThread):
                     try:
                         gesture_id = int(parts[0])
                         sensors = [float(v) for v in parts[1:]]
+                        # Debug log para a luva
+                        print(f"DEBUG GLOVE: Gesto {gesture_id} | Sensores: {sensors[:5]}")
+                        
                         self.data_signal.emit({
                             "gesture_id": gesture_id,
                             "sensors": sensors,

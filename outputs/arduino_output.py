@@ -59,31 +59,48 @@ class ArduinoOutput(QObject):
             7: 180,   # Anelar
             6: 130    # Minimo
         }
+        self._available_ports = []
 
-    def connect(self):
-        """Tenta conectar ao Arduino via pyfirmata"""
+    @staticmethod
+    def list_available_ports():
+        """Retorna lista de descrições das portas COM"""
         import serial.tools.list_ports
-        ports = [p.device for p in serial.tools.list_ports.comports()]
-        print(f"DEBUG ARDUINO: Portas detectadas no sistema: {ports}")
+        return [f"{p.device} ({p.description})" for p in serial.tools.list_ports.comports()]
 
-        try:
-            print(f"DEBUG ARDUINO: Tentando abrir {self.port}...")
-            self.status_signal.emit(f"Tentando abrir porta {self.port}...")
-            self.board = Arduino(self.port)
-            
-            print("DEBUG ARDUINO: Portas aberta. Configurando pinos...")
-            # Configura pinos como SERVO
-            for pin in self.pins:
-                self.board.digital[pin].mode = SERVO
-            
-            print(f"DEBUG ARDUINO: Sucesso! Hardware pronto na {self.port}")
-            self.status_signal.emit(f"Hardware conectado na {self.port}")
-            return True
-        except Exception as e:
-            msg = f"DEBUG ARDUINO: ERRO na conexão: {str(e)}"
-            print(msg)
-            self.status_signal.emit(f"Falha na conexão. Verifique o terminal.")
-            return False
+    def connect(self, auto_scan=False):
+        """Tenta conectar ao Arduino. Se auto_scan for True, tenta todas as portas."""
+        import serial.tools.list_ports
+        available = serial.tools.list_ports.comports()
+        
+        ports_to_try = [self.port] if self.port else []
+        if auto_scan:
+            # Prioriza portas que pareçam ser Arduino/CH340
+            for p in available:
+                if p.device != self.port:
+                    if "arduino" in p.description.lower() or "ch340" in p.description.lower() or "usb-serial" in p.description.lower():
+                        ports_to_try.insert(0, p.device)
+                    else:
+                        ports_to_try.append(p.device)
+        
+        for port in ports_to_try:
+            try:
+                print(f"DEBUG ARDUINO: Tentando abrir {port}...")
+                self.status_signal.emit(f"Tentando {port}...")
+                self.board = Arduino(port)
+                # Configura pinos como SERVO
+                for pin in self.pins:
+                    self.board.digital[pin].mode = SERVO
+                
+                self.port = port
+                print(f"DEBUG ARDUINO: Sucesso na {port}!")
+                self.status_signal.emit(f"Conectado na {port}")
+                return True
+            except Exception as e:
+                print(f"DEBUG ARDUINO: Falha na {port}: {str(e)}")
+                continue
+        
+        self.status_signal.emit("Falha ao encontrar Arduino.")
+        return False
 
     def run_test_sequence(self):
         """Dispara a thread de teste"""
@@ -113,13 +130,17 @@ class ArduinoOutput(QObject):
         # Se ID for 0 (Fechada), fecha tudo.
         # Para IDs intermediários, podemos fazer lógica de bits se desejar.
         
-        if gesture_id == 15: # ABERTA
+        if gesture_id in [15, 22]: # ABERTA ou BEM ABERTA
             for pin in self.pins:
                 self.board.digital[pin].write(0)
-        elif gesture_id == 0: # FECHADA
+        elif gesture_id in [0, 20]: # FECHADA ou BEM FECHADA
             for pin in self.pins:
                 val = self.VALORES_FECHADOS.get(pin, 140)
                 self.board.digital[pin].write(val)
+        elif gesture_id == 21: # MEIO ABERTA (RELAXADA)
+            for pin in self.pins:
+                target = self.VALORES_FECHADOS.get(pin, 140)
+                self.board.digital[pin].write(int(target * 0.5)) # Posição intermediária
         
         # Opcional: Para gestos parciais (ex: ID 1, 2, 4, 8), 
         # poderíamos mover dedos específicos usando bits.
