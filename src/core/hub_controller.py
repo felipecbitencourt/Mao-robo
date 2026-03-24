@@ -40,6 +40,7 @@ class HubController(QObject):
         self.calibration_buffer = []
         # Carrega a calibração invisível do disco! Evita recalibrar a luva toda vez que ligar
         self.calibrated_vectors = self.config.get("glove_calibration", {})
+        self.glove_weights = self.config.get("glove_weights", [1.0, 1.0, 1.0, 1.0, 1.0])
         
         # Conexão: Frames da câmera -> Processador de Mão
         self.processor.prediction_signal.connect(self._handle_camera_prediction)
@@ -122,12 +123,30 @@ class HubController(QObject):
         gid = data.get("gesture_id", -1)
         fingers_data = None
         
+        # Mapeamento Dinâmico Fluido direto dos sensores nativos para ângulos do Arduino!
+        if len(sensors) >= 5:
+            # Multiplicador Dinâmico Sensível
+            s0 = max(0.0, min(1.0, sensors[0] * self.glove_weights[0]))
+            s1 = max(0.0, min(1.0, sensors[1] * self.glove_weights[1]))
+            s2 = max(0.0, min(1.0, sensors[2] * self.glove_weights[2]))
+            s3 = max(0.0, min(1.0, sensors[3] * self.glove_weights[3]))
+            s4 = max(0.0, min(1.0, sensors[4] * self.glove_weights[4]))
+            
+            # Inversão Físico-Robótica: 1.0 da luva (Aberto) mapeia para 60º na Garra
+            # 0.0 da luva (Fechado) mapeia para 180º ou 100% no Polegar
+            fingers_data = {
+                'polegar': (1.0 - s0) * 100.0,
+                'indicador': 180 - (s1 * 120),
+                'medio': 180 - (s2 * 120),
+                'anelar': 180 - (s3 * 120),
+                'minimo': 180 - (s4 * 120)
+            }
+        
         # Se tivermos calibração, tratamos de forma contínua ou por distância
         if self.calibrated_vectors:
             gid = self._classify_by_distance(sensors)
-            # Se já calibramos os 3 estados, habilitamos controle fluido!
-            if 'CLOSED' in self.calibrated_vectors and 'HALF' in self.calibrated_vectors and 'OPEN' in self.calibrated_vectors:
-                fingers_data = self._calculate_fluid_fingers(sensors)
+        else:
+            if gid == -1: gid = 15 # Valor default genérico se não calibrado
 
         # Mapeamento expandido conforme logs da luva e câmera
         names = {
@@ -337,8 +356,16 @@ class HubController(QObject):
             
             should_emit = False
             if gid != -1:
-                self._last_valid_prediction = data
-                should_emit = True
+                # Bypass completo no Debouncer de repetidor se houver movimento FLUIDO ('fingers')
+                if "fingers" in data:
+                    self._last_valid_prediction = data
+                    should_emit = True
+                else:
+                    last_gid = self._last_valid_prediction.get("gesture_id")
+                    last_src = self._last_valid_prediction.get("source")
+                    if gid != last_gid or source != last_src or (now - self._last_valid_prediction.get("timestamp", 0) > 0.4):
+                        self._last_valid_prediction = data
+                        should_emit = True
             else:
                 last_ts = self._last_valid_prediction.get("timestamp", 0)
                 last_src = self._last_valid_prediction.get("source", "NONE")
@@ -378,6 +405,12 @@ class HubController(QObject):
         
         if success_arduino:
             self.status_signal.emit("Auto-detecção finalizada com sucesso.")
+
+    def set_glove_weight(self, index, weight):
+        """Ajusta do multiplicador de calibração em tempo de execução"""
+        if 0 <= index < 5:
+            self.glove_weights[index] = weight
+            self.config.set("glove_weights", self.glove_weights)
         else:
             self.status_signal.emit("Auto-detecção completa (verifique Arduino).")
 

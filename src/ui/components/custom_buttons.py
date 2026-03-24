@@ -54,33 +54,31 @@ class AnimatedButton(QPushButton):
 
 
 class ActionButton(QPushButton):
-    """Botão de ação principal (INICIAR/PARAR) com destaque."""
+    """Botão de ação principal (INICIAR/PARAR) com destaque tátil."""
     def __init__(self, text, color="#E94560", parent=None):
         super().__init__(text, parent)
         self._color = color
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(52)
+        self.setFixedHeight(46)
         self.setStyleSheet(f"""
             QPushButton {{
-                background-color: {color}18;
-                color: {color};
-                border: 1px solid {color}60;
-                border-bottom: 2px solid {color};
-                border-radius: 10px;
-                font-size: 14px;
+                background-color: {color};
+                color: #FFFFFF;
+                border: none;
+                border-bottom: 3px solid rgba(0, 0, 0, 0.3);
+                border-radius: 8px;
+                font-size: 12px;
                 font-weight: bold;
                 letter-spacing: 1px;
-                padding: 10px 20px;
+                padding: 10px 24px;
             }}
             QPushButton:hover {{
-                background-color: {color}30;
-                border: 1px solid {color};
-                border-bottom: 2px solid {color};
-                color: #FFFFFF;
+                background-color: {color}E6;
             }}
             QPushButton:pressed {{
-                background-color: {color}50;
-                border-bottom: 1px solid {color};
-                padding-top: 12px;
+                background-color: {color}CC;
+                border-bottom: 0px solid rgba(0, 0, 0, 0.3);
+                padding-top: 13px;       /* Desloca o texto pra baixo simulando a física */
+                padding-bottom: 7px;
             }}
         """)

@@ -1,12 +1,12 @@
 import sys
 import os
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt, QTimer, Signal, QObject
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTextCursor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFrame, QGraphicsDropShadowEffect,
     QLineEdit, QProgressBar, QSizePolicy, QRadioButton, QButtonGroup,
-    QComboBox
+    QComboBox, QStackedWidget, QDoubleSpinBox, QTextEdit
 )
 
 from core.hub_controller import HubController
@@ -19,38 +19,38 @@ from ui.components.custom_buttons import ActionButton, AnimatedButton
 #  Paletas
 # ══════════════════════════════════════════════════════════════════
 DARK_THEME = {
-    "bg":           "#0C0C14",
-    "sidebar_bg":   "#0F0F1C",
-    "card_bg":      "#161624",
-    "border":       "#1E1E34",
-    "text":         "#8888AA",
-    "text_dim":     "#505068",
-    "text_bright":  "#E0E0FF",
-    "bar_bg":       "#1E1E34",
-    "input_bg":     "#161624",
-    "input_color":  "#E0E0FF",
-    "toggle_label": "☀  Modo Claro",
+    "bg":           "#0E0E14",
+    "sidebar_bg":   "#14141E",
+    "card_bg":      "#1A1A26",
+    "border":       "#2B2B3E",
+    "text":         "#A7A7C6",
+    "text_dim":     "#7D7D9C",
+    "text_bright":  "#F4F4FD",
+    "bar_bg":       "#2B2B3E",
+    "input_bg":     "#1A1A26",
+    "input_color":  "#F4F4FD",
+    "toggle_label": "☀️  Modo Claro",
     "toggle_style": (
-        "background-color:#1E1E34; color:#8888AA; border:1px solid #2A2A44;"
-        " border-radius:14px; padding:4px 14px; font-size:11px;"
+        "background-color:#2B2B3E; color:#A7A7C6; border:1px solid #3A3A52;"
+        " border-radius:14px; padding:4px 14px; font-size:11px; font-weight:bold;"
     ),
 }
 
 LIGHT_THEME = {
-    "bg":           "#F2F2F8",
-    "sidebar_bg":   "#E8E8F4",
+    "bg":           "#F6F6FA",
+    "sidebar_bg":   "#FFFFFF",
     "card_bg":      "#FFFFFF",
-    "border":       "#D0D0E4",
-    "text":         "#555570",
-    "text_dim":     "#9898B0",
-    "text_bright":  "#1A1A2E",
-    "bar_bg":       "#E0E0EE",
-    "input_bg":     "#FFFFFF",
-    "input_color":  "#1A1A2E",
+    "border":       "#D8D8E5",
+    "text":         "#3F3F56",
+    "text_dim":     "#686885",
+    "text_bright":  "#0A0A10",
+    "bar_bg":       "#EBECF2",
+    "input_bg":     "#FBFBFC",
+    "input_color":  "#0A0A10",
     "toggle_label": "🌙  Modo Escuro",
     "toggle_style": (
-        "background-color:#FFFFFF; color:#555570; border:1px solid #C8C8DC;"
-        " border-radius:14px; padding:4px 14px; font-size:11px;"
+        "background-color:#FFFFFF; color:#3F3F56; border:1px solid #C8C8DC;"
+        " border-radius:14px; padding:4px 14px; font-size:11px; font-weight:bold;"
     ),
 }
 
@@ -60,10 +60,7 @@ LIGHT_THEME = {
 # ══════════════════════════════════════════════════════════════════
 def _section_label(text: str) -> QLabel:
     lbl = QLabel(text.upper())
-    lbl.setStyleSheet(
-        "color:#454560; font-size:9px; font-weight:bold;"
-        " letter-spacing:2px; padding:14px 0 6px 0;"
-    )
+    lbl.setObjectName("section_lbl")
     return lbl
 
 
@@ -96,11 +93,7 @@ def _panel_header(title: str, dot_color: str, theme: dict) -> QWidget:
     """Faixa de cabeçalho para um painel/card."""
     bar = QWidget()
     bar.setFixedHeight(36)
-    bar.setStyleSheet(f"""
-        background-color: {theme['border']};
-        border-top-left-radius: 14px;
-        border-top-right-radius: 14px;
-    """)
+    bar.setObjectName("panel_header")
     layout = QHBoxLayout(bar)
     layout.setContentsMargins(14, 0, 14, 0)
 
@@ -109,13 +102,68 @@ def _panel_header(title: str, dot_color: str, theme: dict) -> QWidget:
     layout.addWidget(dot)
 
     lbl = QLabel(title.upper())
-    lbl.setStyleSheet(
-        f"color:{theme['text']}; font-size:10px; font-weight:bold; letter-spacing:1.5px;"
-    )
+    lbl.setObjectName("panel_title")
     layout.addWidget(lbl)
     layout.addStretch()
     return bar
 
+from PySide6.QtGui import QPainter, QPen, QColor
+from PySide6.QtCore import Qt
+
+class WavePlotWidget(QWidget):
+    def __init__(self, color_str, parent=None):
+        super().__init__(parent)
+        self.color = QColor(color_str)
+        self.history = [0] * 300
+        self.bg_col = QColor("#1A1A26")
+        self.grid_col = QColor("#2B2B3E")
+        self.setMinimumHeight(120)
+    
+    def update_theme(self, bg_str, grid_str):
+        self.bg_col = QColor(bg_str)
+        self.grid_col = QColor(grid_str)
+        self.update()
+        
+    def add_value(self, val):
+        self.history.pop(0)
+        self.history.append(val)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), self.bg_col)
+        
+        painter.setPen(QPen(self.grid_col, 1, Qt.DashLine))
+        painter.drawLine(0, self.height() // 2, self.width(), self.height() // 2)
+        
+        pen = QPen(self.color, 2)
+        painter.setPen(pen)
+        
+        w = self.width()
+        h = self.height()
+        if w == 0 or h == 0: return
+        dx = w / max(1, len(self.history) - 1)
+        for i in range(len(self.history) - 1):
+            x1 = int(i * dx)
+            y1 = int(h - (self.history[i] / 100.0) * h)
+            x2 = int((i + 1) * dx)
+            y2 = int(h - (self.history[i+1] / 100.0) * h)
+            painter.drawLine(x1, y1, x2, y2)
+
+class StreamRedirector(QObject):
+    text_written = Signal(str)
+
+    def __init__(self, stream):
+        super().__init__()
+        self.stream = stream
+
+    def write(self, text):
+        self.text_written.emit(str(text))
+        self.stream.write(text)
+
+    def flush(self):
+        self.stream.flush()
 
 # ══════════════════════════════════════════════════════════════════
 #  Janela principal
@@ -133,7 +181,30 @@ class MainWindow(QMainWindow):
         self.hub.glove_signal.connect(self.update_glove_data)
         self.hub.eeg_signal.connect(self.update_eeg_data)
 
+        # Gamificação EEG (Desafio de 60s)
+        self.eeg_test_active = False
+        self.eeg_test_phase = 0
+        self.eeg_test_seconds = 0
+        self.max_focus = 0
+        self.max_meditation = 0
+        self.eeg_timer = QTimer(self)
+        self.eeg_timer.timeout.connect(self._eeg_test_tick)
+
         self._init_ui()
+
+        # Redirecionamento de Logs para In-App Console
+        self.stdout_redirector = StreamRedirector(sys.stdout)
+        self.stderr_redirector = StreamRedirector(sys.stderr)
+        self.stdout_redirector.text_written.connect(self.append_log)
+        self.stderr_redirector.text_written.connect(self.append_log)
+        sys.stdout = self.stdout_redirector
+        sys.stderr = self.stderr_redirector
+
+    def append_log(self, text):
+        if hasattr(self, 'log_terminal'):
+            self.log_terminal.moveCursor(QTextCursor.End)
+            self.log_terminal.insertPlainText(text)
+            self.log_terminal.moveCursor(QTextCursor.End)
 
     # ── Tema ──────────────────────────────────────────────────── #
     def _current_theme(self):
@@ -144,34 +215,68 @@ class MainWindow(QMainWindow):
         self.hub.config.set("theme_dark_mode", self._dark_mode)
         self._apply_theme()
 
+    def _switch_tab(self, idx):
+        self.stacked_widget.setCurrentIndex(idx)
+        self._apply_theme()
+
     def _apply_theme(self):
         t = self._current_theme()
 
+        if hasattr(self, 'btn_nav_dash'):
+            self.nav_container.setStyleSheet(f"background-color:{t['input_bg']}; border-radius:10px;")
+            nav_style = f"""
+                QPushButton {{
+                    background-color:transparent; color:{t['text_dim']}; 
+                    border:none; border-radius:8px; padding:12px 0px; 
+                    font-weight:bold; font-size:13px; letter-spacing:1px;
+                }}
+                QPushButton:hover {{ color:{t['text_bright']}; background-color:rgba(255,255,255,0.03); }}
+            """
+            nav_active = f"""
+                QPushButton {{
+                    background-color:{t['card_bg']}; color:{t['text_bright']}; 
+                    border:1px solid {t['border']}; border-radius:8px; 
+                    padding:12px 0px; font-weight:bold; font-size:13px; letter-spacing:1px;
+                }}
+            """
+            idx = self.stacked_widget.currentIndex()
+            self.btn_nav_dash.setStyleSheet(nav_active if idx == 0 else nav_style)
+            self.btn_nav_settings.setStyleSheet(nav_active if idx == 1 else nav_style)
+
         self.setStyleSheet(f"""
-            QMainWindow, QWidget {{
-                background-color: {t['bg']};
-                font-family: 'Segoe UI', sans-serif;
+            QMainWindow, QWidget {{ background-color:{t['bg']}; font-family:'Segoe UI', sans-serif; }}
+            QLabel {{ color:{t['text']}; background:transparent; }}
+            QLabel#title_lbl {{ font-size:18px; font-weight:bold; color:{t['text_bright']}; letter-spacing:1px; }}
+            QLabel#subtitle_lbl {{ font-size:10px; color:{t['text_dim']}; letter-spacing:2px; text-transform:uppercase; }}
+            QLabel#sidebar_footer {{ color:{t['text_dim']}; font-size:10px; letter-spacing:1px; }}
+            QLabel#app_title {{ color:{t['text_bright']}; font-size:14px; font-weight:bold; letter-spacing:2px; }}
+            QLabel#section_lbl {{ color:{t['text_dim']}; font-size:10px; font-weight:bold; letter-spacing:1.5px; padding:12px 0 4px 0; }}
+            QLabel#dim_label {{ color:{t['text_dim']}; font-size:10px; font-weight:bold; letter-spacing:0.5px; }}
+            QLabel#glove_lbl {{ color:{t['text']}; font-size:11px; font-weight:500; }}
+            QLabel#panel_title {{ color:{t['text']}; font-size:11px; font-weight:bold; letter-spacing:1.5px; }}
+            QWidget#panel_header {{ background-color:{t['border']}; border-top-left-radius:14px; border-top-right-radius:14px; border-bottom:1px solid {t['border']}; }}
+            QLabel#status_bar {{ padding:10px 18px; border-top:1px solid {t['border']}; color:{t['text_dim']}; font-size:11px; font-family:'Consolas', monospace; background-color:{t['sidebar_bg']}; }}
+            QRadioButton {{ color:{t['text_bright']}; font-size:11px; font-weight:500; background:transparent; padding:2px; }}
+            QFrame#sidebar {{ background-color:{t['sidebar_bg']}; border-right:1px solid {t['border']}; }}
+            QFrame#central_content {{ background-color:{t['bg']}; }}
+            QFrame#videopanel, QFrame#datapanel {{
+                background-color:{t['card_bg']}; border:1px solid {t['border']}; border-radius:14px;
             }}
-            QLabel {{
-                color: {t['text']};
+            QLabel#lbl_idle {{ color:{t['text_dim']}; font-size:16px; font-weight:bold; letter-spacing:1px; }}
+            QProgressBar {{ background-color:{t['bar_bg']}; border-radius:12px; }}
+            QProgressBar::chunk {{ background-color:#10B981; border-radius:12px; }}
+            QProgressBar#attn_bar::chunk {{ background-color:#EF4444; }}
+            QProgressBar#med_bar::chunk {{ background-color:#3B82F6; }}
+            QProgressBar#attn_bar, QProgressBar#med_bar {{ color:{t['input_color']}; text-align:center; font-size:14px; font-weight:bold; }}
+
+            QDoubleSpinBox {{
+                background-color:{t['input_bg']}; color:{t['text_bright']}; 
+                border:1px solid {t['border']}; border-radius:6px; 
+                padding:4px; font-weight:bold; font-size:12px; font-family:'Consolas', monospace;
             }}
-            QFrame#sidebar {{
-                background-color: {t['sidebar_bg']};
-                border-right: 1px solid {t['border']};
-            }}
-            QFrame#central_content {{
-                background-color: {t['bg']};
-            }}
-            QFrame#videopanel {{
-                background-color: {t['card_bg']};
-                border: 1px solid {t['border']};
-                border-radius: 14px;
-            }}
-            QFrame#datapanel {{
-                background-color: {t['card_bg']};
-                border: 1px solid {t['border']};
-                border-radius: 14px;
-            }}
+            QDoubleSpinBox:focus {{ border:1px solid #10B981; }}
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{ width:14px; border:none; background:transparent; }}
+            QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{ background:{t['border']}; border-radius:4px; }}
         """)
 
         self.port_combo.setStyleSheet(f"""
@@ -197,22 +302,12 @@ class MainWindow(QMainWindow):
                 QProgressBar::chunk {{ background-color:#10B981; border-radius:4px; }}
             """)
 
-        self.attn_bar.setStyleSheet(f"""
-            QProgressBar {{ background-color:{t['bar_bg']}; border-radius:6px;
-                color:{t['input_color']}; text-align:center; font-size:10px; }}
-            QProgressBar::chunk {{ background-color:#EF4444; border-radius:6px; }}
-        """)
-        self.med_bar.setStyleSheet(f"""
-            QProgressBar {{ background-color:{t['bar_bg']}; border-radius:6px;
-                color:{t['input_color']}; text-align:center; font-size:10px; }}
-            QProgressBar::chunk {{ background-color:#3B82F6; border-radius:6px; }}
-        """)
-
         self.btn_theme_toggle.setText(t['toggle_label'])
         self.btn_theme_toggle.setStyleSheet(t['toggle_style'])
 
-        self.attn_label.setStyleSheet(f"color:{t['text_dim']}; font-size:11px; font-weight:bold;")
-        self.med_label.setStyleSheet(f"color:{t['text_dim']}; font-size:11px; font-weight:bold;")
+        if hasattr(self, 'attn_plot'):
+            self.attn_plot.update_theme(t['input_bg'], t['border'])
+            self.med_plot.update_theme(t['input_bg'], t['border'])
 
         current_color = "#10B981" if "#10B981" in self.result_label.styleSheet() else t['text_bright']
         self.result_label.setStyleSheet(
@@ -251,6 +346,7 @@ class MainWindow(QMainWindow):
         event.accept()
 
     # ── Construção da UI ──────────────────────────────────────── #
+    # ── Construção da UI ──────────────────────────────────────── #
     def _init_ui(self):
         t = self._current_theme()
 
@@ -281,6 +377,26 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(20, 28, 20, 24)
         sidebar_layout.setSpacing(0)
 
+        # Navegação via Abas Segmentadas
+        self.nav_container = QFrame()
+        nav_layout = QHBoxLayout(self.nav_container)
+        nav_layout.setContentsMargins(4, 4, 4, 4)
+        nav_layout.setSpacing(4)
+        
+        self.btn_nav_dash = QPushButton("📊 Dashboard")
+        self.btn_nav_settings = QPushButton("⚙️ Specs")
+        self.btn_nav_dash.setCursor(Qt.PointingHandCursor)
+        self.btn_nav_settings.setCursor(Qt.PointingHandCursor)
+        self.btn_nav_dash.clicked.connect(lambda: self._switch_tab(0))
+        self.btn_nav_settings.clicked.connect(lambda: self._switch_tab(1))
+        
+        nav_layout.addWidget(self.btn_nav_dash)
+        nav_layout.addWidget(self.btn_nav_settings)
+        sidebar_layout.addWidget(self.nav_container)
+        sidebar_layout.addSpacing(16)
+        sidebar_layout.addWidget(_h_divider("#1E1E34"))
+        sidebar_layout.addSpacing(12)
+
         # Bloco de branding
         brand_widget = QWidget()
         brand_layout = QVBoxLayout(brand_widget)
@@ -294,18 +410,15 @@ class MainWindow(QMainWindow):
         brand_layout.addSpacing(8)
 
         title_lbl = QLabel("MÃO ROBÓTICA")
-        title_lbl.setStyleSheet(
-            "font-size:18px; font-weight:bold; color:#E0E0FF; letter-spacing:1px;"
-        )
+        title_lbl.setObjectName("title_lbl")
         brand_layout.addWidget(title_lbl)
 
         subtitle_lbl = QLabel("PRO HUB  ·  MULTIMODAL")
-        subtitle_lbl.setStyleSheet("font-size:10px; color:#505068; letter-spacing:2px;")
+        subtitle_lbl.setObjectName("subtitle_lbl")
         brand_layout.addWidget(subtitle_lbl)
 
         sidebar_layout.addWidget(brand_widget)
-        sidebar_layout.addSpacing(4)
-        sidebar_layout.addWidget(_h_divider("#1E1E34"))
+        sidebar_layout.addSpacing(24)
 
         # Seção Inputs
         sidebar_layout.addWidget(_section_label("Inputs Disponíveis"))
@@ -327,95 +440,69 @@ class MainWindow(QMainWindow):
         self.btn_eeg.toggled.connect(self._toggle_eeg)
         sidebar_layout.addWidget(self.btn_eeg)
 
-        sidebar_layout.addSpacing(4)
+        sidebar_layout.addSpacing(24)
         sidebar_layout.addWidget(_h_divider("#1E1E34"))
-
-        # Seção Saída
-        sidebar_layout.addWidget(_section_label("Controle de Saída"))
-
-        port_row = QHBoxLayout()
-        port_lbl = QLabel("Porta:")
-        port_lbl.setStyleSheet("color:#505068; font-size:12px; font-weight:bold;")
-        port_row.addWidget(port_lbl)
-        self.port_combo = QComboBox()
-        self.port_combo.setFixedHeight(32)
-        self.port_combo.setStyleSheet(f"""
-            QComboBox {{
-                background-color:{t['input_bg']}; color:{t['input_color']};
-                border:1px solid {t['border']}; border-radius:6px; padding:5px 8px; font-size:13px;
-            }}
-            QComboBox QAbstractItemView {{
-                background-color:{t['input_bg']}; color:{t['input_color']};
-                selection-background-color:#3B82F6; selection-color:#FFFFFF;
-            }}
-        """)
         
-        self._refresh_ports_combo()
-        self.port_combo.currentTextChanged.connect(self._update_port)
-        
-        port_row.addWidget(self.port_combo)
-        sidebar_layout.addLayout(port_row)
-        sidebar_layout.addSpacing(8)
-
+        # Saída Arduino limpa
+        sidebar_layout.addWidget(_section_label("Controle Mestre"))
         self.btn_output_hand = AnimatedButton("🦾  MÃO ROBÓTICA: OFF", accent_color="#EF4444")
         self.btn_output_hand.setCheckable(True)
         self.btn_output_hand.toggled.connect(self._toggle_output_hand)
         sidebar_layout.addWidget(self.btn_output_hand)
-        sidebar_layout.addSpacing(6)
-
-        self.btn_test_hand = AnimatedButton("⚙️  TESTAR SERVOS", accent_color="#3B82F6")
-        self.btn_test_hand.clicked.connect(self.hub.test_arduino_hand)
-        sidebar_layout.addWidget(self.btn_test_hand)
-        sidebar_layout.addSpacing(6)
-
-        self.btn_auto_ports = AnimatedButton("🔍  DETECTAR PORTAS", accent_color="#8B5CF6")
-        self.btn_auto_ports.clicked.connect(self._on_auto_detect_clicked)
-        sidebar_layout.addWidget(self.btn_auto_ports)
 
         sidebar_layout.addStretch()
 
-        # Rodapé da sidebar
         sidebar_footer = QLabel("Sistema v2.0  •  Multimodal")
-        sidebar_footer.setStyleSheet("color:#303048; font-size:10px; letter-spacing:1px;")
+        sidebar_footer.setObjectName("sidebar_footer")
         sidebar_footer.setAlignment(Qt.AlignCenter)
         sidebar_layout.addWidget(sidebar_footer)
 
-        # ── ÁREA CENTRAL ─────────────────────────────────────────
-        self.central_content = QFrame()
-        self.central_content.setObjectName("central_content")
-        central_layout = QVBoxLayout(self.central_content)
-        central_layout.setContentsMargins(28, 22, 28, 0)
-        central_layout.setSpacing(18)
+        # ── ÁREA CENTRAL (Gerenciador de Abas) ───────────────────
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
 
-        # Header da área central
-        header_layout = QHBoxLayout()
+        self.stacked_widget = QStackedWidget()
+        right_layout.addWidget(self.stacked_widget)
 
-        app_title = QLabel("PAINEL DE CONTROLE")
-        app_title.setStyleSheet(
-            "color:#303048; font-size:11px; font-weight:bold; letter-spacing:2px;"
-        )
-        header_layout.addWidget(app_title)
-        header_layout.addStretch()
+        # ════════════ TELA 0: DASHBOARD ════════════
+        self.page_dashboard = QFrame()
+        self.page_dashboard.setObjectName("central_content")
+        dash_layout = QVBoxLayout(self.page_dashboard)
+        dash_layout.setContentsMargins(28, 22, 28, 0)
+        dash_layout.setSpacing(18)
 
-        self.btn_theme_toggle = QPushButton(t['toggle_label'])
-        self.btn_theme_toggle.setFixedHeight(28)
-        self.btn_theme_toggle.setStyleSheet(t['toggle_style'])
-        self.btn_theme_toggle.setCursor(Qt.PointingHandCursor)
-        self.btn_theme_toggle.clicked.connect(self._toggle_theme)
-        header_layout.addWidget(self.btn_theme_toggle)
+        app_title = QLabel("DASHBOARD PRINCIPAL")
+        app_title.setObjectName("app_title")
+        dash_layout.addWidget(app_title)
 
-        central_layout.addLayout(header_layout)
+        # DASHBOARD SUB-PAGES MANAGER
+        self.dash_stack = QStackedWidget()
+        dash_layout.addWidget(self.dash_stack)
 
-        # ── PAINEL DE VÍDEO ──────────────────────────────────────
+        # ── SUBTELA 0: IDLE ──
+        self.dash_idle = QFrame()
+        idle_layout = QVBoxLayout(self.dash_idle)
+        lbl_idle = QLabel("NENHUM INPUT SELECIONADO\n\nAtive a Câmera, Luva ou Tiara EEG na barra lateral.")
+        lbl_idle.setObjectName("lbl_idle")
+        lbl_idle.setAlignment(Qt.AlignCenter)
+        idle_layout.addWidget(lbl_idle)
+        self.dash_stack.addWidget(self.dash_idle)
+
+        # ── SUBTELA 1: CÂMERA ──
+        self.dash_cam = QFrame()
+        cam_layout = QVBoxLayout(self.dash_cam)
+        cam_layout.setContentsMargins(0, 0, 0, 0)
+        cam_layout.setSpacing(18)
+
         self.video_container = QFrame()
         self.video_container.setObjectName("videopanel")
-        self.video_container.setMinimumHeight(340)
+        self.video_container.setMinimumHeight(440)
         video_outer = QVBoxLayout(self.video_container)
         video_outer.setContentsMargins(0, 0, 0, 0)
         video_outer.setSpacing(0)
-
-        video_header = _panel_header("Visão Computacional", "#3B82F6", t)
-        video_outer.addWidget(video_header)
+        video_outer.addWidget(_panel_header("Câmera Inteligente (MediaPipe)", "#3B82F6", t))
 
         self.video_display = VideoDisplay()
         self.hub.frame_signal.connect(self.video_display.update_frame)
@@ -426,204 +513,367 @@ class MainWindow(QMainWindow):
         shadow.setColor(QColor(0, 0, 0, 120))
         shadow.setOffset(0, 8)
         self.video_container.setGraphicsEffect(shadow)
+        cam_layout.addWidget(self.video_container)
 
-        central_layout.addWidget(self.video_container)
-
-        # ── PAINEL DE DADOS ───────────────────────────────────────
-        self.data_panel = QFrame()
-        self.data_panel.setObjectName("datapanel")
-        data_outer = QVBoxLayout(self.data_panel)
-        data_outer.setContentsMargins(0, 0, 0, 0)
-        data_outer.setSpacing(0)
-
-        data_header = _panel_header("Dados em Tempo Real", "#10B981", t)
-        data_outer.addWidget(data_header)
-
-        data_inner = QWidget()
-        data_inner_layout = QHBoxLayout(data_inner)
-        data_inner_layout.setContentsMargins(16, 14, 16, 14)
-        data_inner_layout.setSpacing(20)
-
+        self.cam_data = QFrame()
+        self.cam_data.setObjectName("datapanel")
+        cam_data_layout = QHBoxLayout(self.cam_data)
+        cam_data_layout.setContentsMargins(16, 14, 16, 14)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.gesture_display = GestureDisplay(
-            images_path=os.path.join(base_dir, "luva", "gesture-images")
-        )
-        data_inner_layout.addWidget(self.gesture_display)
+        self.gesture_display = GestureDisplay(images_path=os.path.join(base_dir, "luva", "gesture-images"))
+        cam_data_layout.addWidget(self.gesture_display)
 
-        # Coluna de texto e métricas
         text_col = QVBoxLayout()
         text_col.setSpacing(8)
-
         self.result_label = QLabel("AGUARDANDO GESTO")
-        self.result_label.setStyleSheet(
-            f"font-size:36px; font-weight:bold; color:{t['text_bright']};"
-        )
-        self.result_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.result_label.setStyleSheet(f"font-size:36px; font-weight:bold; color:{t['text_bright']};")
         text_col.addWidget(self.result_label)
-
         self.source_label = QLabel("Fonte: —")
-        self.source_label.setStyleSheet(
-            "color:#E94560; font-weight:bold; font-size:12px; letter-spacing:1px;"
-        )
+        self.source_label.setStyleSheet("color:#E94560; font-weight:bold; font-size:12px; letter-spacing:1px;")
         text_col.addWidget(self.source_label)
-
-        text_col.addSpacing(4)
-
-        # Telemetria da Luva
-        self.glove_telemetry = QFrame()
-        glove_tel_layout = QVBoxLayout(self.glove_telemetry)
-        glove_tel_layout.setContentsMargins(0, 4, 0, 4)
-        glove_tel_layout.setSpacing(5)
-
-        finger_names = ["Polegar", "Indicador", "Médio", "Anelar", "Mínimo"]
-        self.glove_bars = []
-        for i, fname in enumerate(finger_names):
+        text_col.addSpacing(16)
+        
+        text_col.addWidget(_section_label("Visão Fluída de Mão (MediaPipe)"))
+        cam_tel_layout = QVBoxLayout()
+        cam_tel_layout.setSpacing(6)
+        self.cam_bars = []
+        for fname in ["Polegar", "Indicador", "Médio", "Anelar", "Mínimo"]:
             row = QHBoxLayout()
-            row.setSpacing(8)
+            row.setSpacing(10)
             lbl = QLabel(fname)
             lbl.setFixedWidth(68)
-            lbl.setStyleSheet(f"color:{t['text_dim']}; font-size:10px;")
+            lbl.setObjectName("dim_label")
             bar = QProgressBar()
-            bar.setFixedHeight(7)
+            bar.setFixedHeight(8)
             bar.setRange(0, 100)
             bar.setTextVisible(False)
-            bar.setStyleSheet(f"""
-                QProgressBar {{ background-color:{t['bar_bg']}; border-radius:4px; }}
-                QProgressBar::chunk {{ background-color:#10B981; border-radius:4px; }}
-            """)
             row.addWidget(lbl)
             row.addWidget(bar)
+            cam_tel_layout.addLayout(row)
+            self.cam_bars.append(bar)
+            
+        text_col.addLayout(cam_tel_layout)
+        text_col.addStretch()
+        cam_data_layout.addLayout(text_col)
+        cam_layout.addWidget(self.cam_data)
+
+        self.dash_stack.addWidget(self.dash_cam)
+
+        # ── SUBTELA 2: LUVA SENSORIAL ──
+        self.dash_glove = QFrame()
+        glove_layout = QHBoxLayout(self.dash_glove)
+        glove_layout.setContentsMargins(0, 0, 0, 0)
+        glove_layout.setSpacing(18)
+
+        self.glove_panel = QFrame()
+        self.glove_panel.setObjectName("datapanel")
+        g_outer = QVBoxLayout(self.glove_panel)
+        g_outer.setContentsMargins(0, 0, 0, 0)
+        g_outer.setSpacing(0)
+        g_outer.addWidget(_panel_header("Telemetria da Luva Óptica (5DT)", "#10B981", t))
+
+        self.glove_telemetry = QFrame()
+        glove_tel_layout = QVBoxLayout(self.glove_telemetry)
+        glove_tel_layout.setContentsMargins(40, 40, 40, 40)
+        glove_tel_layout.setSpacing(25)
+
+        self.glove_bars = []
+        self.glove_raw_labels = []
+        for i, fname in enumerate(["Polegar", "Indicador", "Médio", "Anelar", "Mínimo"]):
+            row = QHBoxLayout()
+            row.setSpacing(15)
+            lbl = QLabel(fname)
+            lbl.setFixedWidth(100)
+            lbl.setObjectName("app_title")
+            bar = QProgressBar()
+            bar.setFixedHeight(24)
+            bar.setRange(0, 100)
+            bar.setTextVisible(False)
+            
+            raw_lbl = QLabel("0.00")
+            raw_lbl.setFixedWidth(40)
+            raw_lbl.setStyleSheet(f"font-family:'Consolas', monospace; font-size:12px; font-weight:bold; color:{t['text_dim']};")
+            
+            # Spinbox de multiplicador de peso do dedo
+            spin = QDoubleSpinBox()
+            spin.setRange(0.1, 5.0)
+            spin.setSingleStep(0.1)
+            spin.setDecimals(1)
+            spin.setSuffix(" x")
+            spin.setFixedWidth(60)
+            spin.setValue(self.hub.glove_weights[i])
+            spin.valueChanged.connect(lambda v, idx=i: self.hub.set_glove_weight(idx, v))
+            
+            row.addWidget(lbl)
+            row.addWidget(bar)
+            row.addWidget(raw_lbl)
+            row.addWidget(spin)
             glove_tel_layout.addLayout(row)
             self.glove_bars.append(bar)
+            self.glove_raw_labels.append(raw_lbl)
 
-        self.glove_telemetry.hide()
-        text_col.addWidget(self.glove_telemetry)
+        g_outer.addWidget(self.glove_telemetry)
+        g_outer.addStretch()
+        glove_layout.addWidget(self.glove_panel, 2)
 
-        self.btn_calibrate_glove = QPushButton("CALIBRAR LUVA")
-        self.btn_calibrate_glove.setFixedHeight(32)
-        self.btn_calibrate_glove.setCursor(Qt.PointingHandCursor)
-        self.btn_calibrate_glove.setStyleSheet("""
-            QPushButton {
-                background-color:#3B82F618; color:#3B82F6;
-                border:1px solid #3B82F660; border-bottom:2px solid #3B82F6;
-                border-radius:7px; font-weight:bold; font-size:12px; letter-spacing:1px;
-            }
-            QPushButton:hover { background-color:#3B82F630; color:#FFFFFF; }
-            QPushButton:disabled { color:#303048; border-color:#252540; background:transparent; }
-        """)
-        self.btn_calibrate_glove.clicked.connect(self.start_calibration_sequence)
-        text_col.addWidget(self.btn_calibrate_glove)
-
-        # Telemetria EEG
-        self.eeg_telemetry = QFrame()
-        eeg_tel_layout = QVBoxLayout(self.eeg_telemetry)
-        eeg_tel_layout.setSpacing(6)
-        eeg_tel_layout.setContentsMargins(0, 4, 0, 4)
-
-        mode_layout = QHBoxLayout()
-        mode_layout.setSpacing(8)
-        mode_lbl = QLabel("CONTROLE:")
-        mode_lbl.setStyleSheet(f"color:{t['text_dim']}; font-size:10px; font-weight:bold;")
-        mode_layout.addWidget(mode_lbl)
+        # Novo Painel Direito: Diagnóstico da Luva
+        self.glove_diag = QFrame()
+        self.glove_diag.setObjectName("datapanel")
+        gd_outer = QVBoxLayout(self.glove_diag)
+        gd_outer.setContentsMargins(0, 0, 0, 0)
+        gd_outer.setSpacing(0)
+        gd_outer.addWidget(_panel_header("Predição (I.A. Vetorial)", "#8B5CF6", t))
         
-        self.mode_group = QButtonGroup(self.eeg_telemetry)
-        self.rb_none = QRadioButton("Mudo")
-        self.rb_attn = QRadioButton("Atenção")
-        self.rb_med = QRadioButton("Meditação")
+        gd_inner = QVBoxLayout()
+        gd_inner.setContentsMargins(16, 14, 16, 14)
+        gd_inner.setSpacing(10)
         
+        self.glove_gesture_display = GestureDisplay(images_path=os.path.join(base_dir, "luva", "gesture-images"))
+        gd_inner.addWidget(self.glove_gesture_display, alignment=Qt.AlignCenter)
+        
+        self.glove_result_lbl = QLabel("SEM SINAL")
+        self.glove_result_lbl.setStyleSheet(f"font-size:24px; font-weight:bold; color:{t['text_bright']};")
+        self.glove_result_lbl.setAlignment(Qt.AlignCenter)
+        gd_inner.addWidget(self.glove_result_lbl)
+        
+        gd_inner.addStretch()
+        has_calib = len(self.hub.calibrated_vectors) > 0
+        self.glove_calib_lbl = QLabel("Calibração carregada do disco." if has_calib else "Requer Calibração Inicial")
+        color_calib = "#10B981" if has_calib else "#EF4444"
+        self.glove_calib_lbl.setStyleSheet(f"font-size:10px; color:{color_calib}; font-weight:bold; font-family:'Consolas', monospace;")
+        self.glove_calib_lbl.setAlignment(Qt.AlignCenter)
+        gd_inner.addWidget(self.glove_calib_lbl)
+        
+        gd_outer.addLayout(gd_inner)
+        glove_layout.addWidget(self.glove_diag, 1)
+
+        self.dash_stack.addWidget(self.dash_glove)
+
+        # ── SUBTELA 3: EEG BRAINLINK ──
+        self.dash_eeg = QFrame()
+        eeg_layout = QVBoxLayout(self.dash_eeg)
+        eeg_layout.setContentsMargins(0, 0, 0, 0)
+        eeg_layout.setSpacing(18)
+
+        eeg_split = QHBoxLayout()
+        eeg_split.setSpacing(18)
+
+        self.eeg_graph_panel = QFrame()
+        self.eeg_graph_panel.setObjectName("datapanel")
+        gp_outer = QVBoxLayout(self.eeg_graph_panel)
+        gp_outer.setContentsMargins(0,0,0,0)
+        gp_outer.setSpacing(0)
+        gp_outer.addWidget(_panel_header("Eletroencefalograma Vivo", "#3B82F6", t))
+
+        gp_inner = QVBoxLayout()
+        gp_inner.setContentsMargins(25, 25, 25, 25)
+        gp_inner.setSpacing(15)
+
+        lbl_att_g = QLabel("Onda de Foco (Atenção)")
+        lbl_att_g.setStyleSheet("color:#EF4444; font-weight:bold; font-size:12px; letter-spacing:1px;")
+        self.attn_plot = WavePlotWidget("#EF4444")
+        gp_inner.addWidget(lbl_att_g)
+        gp_inner.addWidget(self.attn_plot)
+        gp_inner.addSpacing(10)
+
+        lbl_med_g = QLabel("Onda de Relaxamento (Meditação)")
+        lbl_med_g.setStyleSheet("color:#3B82F6; font-weight:bold; font-size:12px; letter-spacing:1px;")
+        self.med_plot = WavePlotWidget("#3B82F6")
+        gp_inner.addWidget(lbl_med_g)
+        gp_inner.addWidget(self.med_plot)
+
+        gp_outer.addLayout(gp_inner)
+        eeg_split.addWidget(self.eeg_graph_panel, 2)
+
+        self.eeg_ctrl_panel = QFrame()
+        self.eeg_ctrl_panel.setObjectName("datapanel")
+        cp_outer = QVBoxLayout(self.eeg_ctrl_panel)
+        cp_outer.setContentsMargins(0,0,0,0)
+        cp_outer.setSpacing(0)
+        cp_outer.addWidget(_panel_header("Motor / Hub Qualidade", "#F59E0B", t))
+
+        cp_inner = QVBoxLayout()
+        cp_inner.setContentsMargins(20, 20, 20, 20)
+        cp_inner.setSpacing(25)
+
+        self.eeg_card_sig = QFrame()
+        self.eeg_card_sig.setObjectName("datapanel")
+        sig_lyt = QVBoxLayout(self.eeg_card_sig)
+        sig_lyt.setContentsMargins(15, 15, 15, 15)
+        self.eeg_label = QLabel("SINAL: DESCONECTADO")
+        self.eeg_label.setAlignment(Qt.AlignCenter)
+        self.eeg_label.setStyleSheet("color:#F59E0B; font-family:'Consolas', monospace; font-size:14px; font-weight:bold;")
+        sig_lyt.addWidget(self.eeg_label)
+        cp_inner.addWidget(self.eeg_card_sig)
+
+        mode_lbl = QLabel("MODO DE ATUAÇÃO:")
+        mode_lbl.setObjectName("app_title")
+        cp_inner.addWidget(mode_lbl)
+
+        self.mode_group = QButtonGroup(self.dash_eeg)
+        self.rb_none = QRadioButton("Mudo (Leitura Pura)")
+        self.rb_attn = QRadioButton("Foco Concentrado (>60)")
+        self.rb_med = QRadioButton("Transe/Meditação (>60)")
         for rb in [self.rb_none, self.rb_attn, self.rb_med]:
-            rb.setStyleSheet(f"color:{t['text_bright']}; font-size:10px;")
             self.mode_group.addButton(rb)
-            mode_layout.addWidget(rb)
-            
-        mode_layout.addStretch()
+            cp_inner.addWidget(rb)
+        
         self.rb_none.setChecked(True)
         self.rb_none.toggled.connect(lambda c: self._set_eeg_mode('none') if c else None)
         self.rb_attn.toggled.connect(lambda c: self._set_eeg_mode('attention') if c else None)
         self.rb_med.toggled.connect(lambda c: self._set_eeg_mode('meditation') if c else None)
-        eeg_tel_layout.addLayout(mode_layout)
+
+        cp_inner.addSpacing(15)
+        self.btn_test_eeg = QPushButton("🎯 INICIAR DESAFIO (60s)")
+        self.btn_test_eeg.setCursor(Qt.PointingHandCursor)
+        self.btn_test_eeg.setStyleSheet("background-color:#8B5CF6; color:#FFFFFF; border:none; border-radius:6px; padding:12px; font-weight:bold; font-size:12px;")
+        self.btn_test_eeg.clicked.connect(self.start_eeg_test)
+        
+        self.eeg_test_lbl = QLabel("Avalie seu limite de Foco cerebral.")
+        self.eeg_test_lbl.setAlignment(Qt.AlignCenter)
+        self.eeg_test_lbl.setWordWrap(True)
+        self.eeg_test_lbl.setStyleSheet("font-size:11px; font-weight:bold; color:#A7A7C6; padding-top:4px;")
+        
+        cp_inner.addWidget(self.btn_test_eeg)
+        cp_inner.addWidget(self.eeg_test_lbl)
+
+        cp_inner.addStretch()
 
         attn_row = QHBoxLayout()
-        attn_row.setSpacing(10)
-        self.attn_label = QLabel("ATENÇÃO")
-        self.attn_label.setFixedWidth(80)
-        self.attn_label.setStyleSheet(f"color:{t['text_dim']}; font-size:11px; font-weight:bold;")
+        self.attn_label = QLabel("ATT")
+        self.attn_label.setFixedWidth(40)
+        self.attn_label.setObjectName("app_title")
         self.attn_bar = QProgressBar()
+        self.attn_bar.setObjectName("attn_bar")
         self.attn_bar.setFixedHeight(12)
         self.attn_bar.setRange(0, 100)
-        self.attn_bar.setTextVisible(True)
-        self.attn_bar.setStyleSheet(f"""
-            QProgressBar {{ background-color:{t['bar_bg']}; border-radius:6px;
-                color:{t['input_color']}; text-align:center; font-size:10px; }}
-            QProgressBar::chunk {{ background-color:#EF4444; border-radius:6px; }}
-        """)
+        self.attn_bar.setTextVisible(False)
         attn_row.addWidget(self.attn_label)
         attn_row.addWidget(self.attn_bar)
-        eeg_tel_layout.addLayout(attn_row)
+        cp_inner.addLayout(attn_row)
 
         med_row = QHBoxLayout()
-        med_row.setSpacing(10)
-        self.med_label = QLabel("MEDITAÇÃO")
-        self.med_label.setFixedWidth(80)
-        self.med_label.setStyleSheet(f"color:{t['text_dim']}; font-size:11px; font-weight:bold;")
+        self.med_label = QLabel("MED")
+        self.med_label.setFixedWidth(40)
+        self.med_label.setObjectName("app_title")
         self.med_bar = QProgressBar()
+        self.med_bar.setObjectName("med_bar")
         self.med_bar.setFixedHeight(12)
         self.med_bar.setRange(0, 100)
-        self.med_bar.setTextVisible(True)
-        self.med_bar.setStyleSheet(f"""
-            QProgressBar {{ background-color:{t['bar_bg']}; border-radius:6px;
-                color:{t['input_color']}; text-align:center; font-size:10px; }}
-            QProgressBar::chunk {{ background-color:#3B82F6; border-radius:6px; }}
-        """)
+        self.med_bar.setTextVisible(False)
         med_row.addWidget(self.med_label)
         med_row.addWidget(self.med_bar)
-        eeg_tel_layout.addLayout(med_row)
+        cp_inner.addLayout(med_row)
 
-        self.eeg_label = QLabel("SINAL: —")
-        self.eeg_label.setStyleSheet(
-            "color:#F59E0B; font-family:'Consolas', monospace; font-size:11px;"
-        )
-        eeg_tel_layout.addWidget(self.eeg_label)
+        cp_outer.addLayout(cp_inner)
+        eeg_split.addWidget(self.eeg_ctrl_panel, 1)
 
-        self.eeg_telemetry.hide()
-        text_col.addWidget(self.eeg_telemetry)
+        eeg_layout.addLayout(eeg_split)
+        self.dash_stack.addWidget(self.dash_eeg)
 
-        text_col.addStretch()
-        data_inner_layout.addLayout(text_col)
-        data_outer.addWidget(data_inner)
-        central_layout.addWidget(self.data_panel)
+        self.stacked_widget.addWidget(self.page_dashboard)
 
-        # ── BOTÕES DE AÇÃO ────────────────────────────────────────
-        action_row = QHBoxLayout()
-        action_row.setSpacing(16)
 
-        self.btn_start = ActionButton("▶  INICIAR MOTOR", color="#10B981")
-        self.btn_start.clicked.connect(self.hub.start)
+        # ════════════ TELA 1: CONFIGURAÇÕES E HARDWARE ════════════
+        self.page_settings = QFrame()
+        self.page_settings.setObjectName("central_content")
+        sett_layout = QHBoxLayout(self.page_settings)
+        sett_layout.setContentsMargins(40, 40, 40, 40)
+        sett_layout.setSpacing(40)
 
-        self.btn_stop = ActionButton("■  PARAR TUDO", color="#EF4444")
+        # -- PAINEL ESQUERDO (Controladores) --
+        left_panel = QVBoxLayout()
+        left_panel.setSpacing(24)
+
+        sett_header = QHBoxLayout()
+        lbl_sett = QLabel("RECURSOS DO SISTEMA")
+        lbl_sett.setObjectName("app_title")
+        sett_header.addWidget(lbl_sett)
+        sett_header.addStretch()
+
+        self.btn_theme_toggle = QPushButton(t['toggle_label'])
+        self.btn_theme_toggle.setFixedHeight(28)
+        self.btn_theme_toggle.setStyleSheet(t['toggle_style'])
+        self.btn_theme_toggle.setCursor(Qt.PointingHandCursor)
+        self.btn_theme_toggle.clicked.connect(self._toggle_theme)
+        sett_header.addWidget(self.btn_theme_toggle)
+        left_panel.addLayout(sett_header)
+        left_panel.addWidget(_h_divider("#1E1E34"))
+
+        # Conexão Arduino
+        left_panel.addWidget(_section_label("Conexão Robótica (Arduino)"))
+        port_row = QHBoxLayout()
+        self.port_combo = QComboBox()
+        self.port_combo.setFixedHeight(36)
+        self.port_combo.setMinimumWidth(250)
+        self.port_combo.setStyleSheet(f"""
+            QComboBox {{ background-color:{t['input_bg']}; color:{t['input_color']}; border:1px solid {t['border']}; border-radius:6px; padding:5px 8px; font-size:14px; margin-right: 10px; }}
+            QComboBox QAbstractItemView {{ background-color:{t['input_bg']}; color:{t['input_color']}; selection-background-color:#3B82F6; selection-color:#FFFFFF; }}
+        """)
+        self._refresh_ports_combo()
+        self.port_combo.currentTextChanged.connect(self._update_port)
+        port_row.addWidget(self.port_combo)
+        
+        self.btn_auto_ports = ActionButton("🔍 DETECTAR", color="#8B5CF6")
+        self.btn_auto_ports.setFixedHeight(36) # Forçando a altura para bater com a combobox
+        self.btn_auto_ports.clicked.connect(self._on_auto_detect_clicked)
+        port_row.addWidget(self.btn_auto_ports)
+        port_row.addStretch()
+        left_panel.addLayout(port_row)
+
+        self.btn_test_hand = ActionButton("⚙️ TESTAR CONEXÃO", color="#3B82F6")
+        self.btn_test_hand.clicked.connect(self.hub.test_arduino_hand)
+        left_panel.addWidget(self.btn_test_hand, alignment=Qt.AlignLeft)
+        left_panel.addSpacing(16)
+
+        # Calibração
+        left_panel.addWidget(_section_label("Sensores Físicos"))
+        self.btn_calibrate_glove = ActionButton("🖐 REFAZER CALIBRAÇÃO DA LUVA", color="#10B981")
+        self.btn_calibrate_glove.clicked.connect(self.start_calibration_sequence)
+        left_panel.addWidget(self.btn_calibrate_glove, alignment=Qt.AlignLeft)
+        left_panel.addSpacing(16)
+
+        # Emergência
+        left_panel.addWidget(_section_label("Zona de Perigo"))
+        self.btn_stop = ActionButton("🛑 CORTE DE EMERGÊNCIA DOS MOTORES", color="#EF4444")
         self.btn_stop.clicked.connect(self.hub.stop)
+        left_panel.addWidget(self.btn_stop, alignment=Qt.AlignLeft)
+        
+        left_panel.addStretch()
 
-        self.btn_calibrate = ActionButton("◈  CALIBRAR", color="#3B82F6")
-        self.btn_calibrate.clicked.connect(self.hub.calibrate)
+        # -- PAINEL DIREITO (Terminal de Logs) --
+        right_panel = QVBoxLayout()
+        right_panel.setSpacing(12)
+        right_panel.addWidget(_section_label("Console de Sistema Local (Debug ao Vivo)"))
+        
+        self.log_terminal = QTextEdit()
+        self.log_terminal.setReadOnly(True)
+        self.log_terminal.setLineWrapMode(QTextEdit.NoWrap)
+        t = self._current_theme()
+        self.log_terminal.setStyleSheet(f"""
+            QTextEdit {{
+                background-color:#0A0A0F; color:#A7A7C6; 
+                border:1px solid {t['border']}; border-radius:6px; 
+                padding:12px; font-family:'Consolas', monospace; font-size:11px;
+            }}
+        """)
+        right_panel.addWidget(self.log_terminal)
 
-        action_row.addWidget(self.btn_start)
-        action_row.addWidget(self.btn_stop)
-        action_row.addWidget(self.btn_calibrate)
-        central_layout.addLayout(action_row)
+        # Junta as metades horizontais alocando mais peso (3) para o terminal crescer
+        sett_layout.addLayout(left_panel, 2)
+        sett_layout.addLayout(right_panel, 3)
+
+        self.stacked_widget.addWidget(self.page_settings)
 
         # ── BARRA DE STATUS ───────────────────────────────────────
-        self.status_bar_label = QLabel("● SISTEMA PRONTO")
-        self.status_bar_label.setStyleSheet(f"""
-            padding:10px 18px; border-top:1px solid {t['border']};
-            color:{t['text_dim']}; font-size:11px; font-family:'Consolas', monospace;
-            background-color:{t['sidebar_bg']};
-        """)
-        central_layout.addWidget(self.status_bar_label)
+        self.status_bar_label = QLabel("● SISTEMA INICIADO")
+        self.status_bar_label.setObjectName("status_bar")
+        right_layout.addWidget(self.status_bar_label)
 
-        central_layout.setContentsMargins(28, 22, 28, 0)
+        main_layout.addWidget(self.sidebar, 1)
+        main_layout.addWidget(right_container, 3)
 
-        main_layout.addWidget(self.sidebar)
-        main_layout.addWidget(self.central_content)
+        self._switch_tab(0)
 
     # ── Callbacks ─────────────────────────────────────────────── #
     def _refresh_ports_combo(self):
@@ -678,14 +928,35 @@ class MainWindow(QMainWindow):
             self.hub.set_hand_output(False)
 
     def _toggle_camera(self, checked):
+        if checked:
+            self.btn_glove.setChecked(False)
+            self.btn_eeg.setChecked(False)
+            self.dash_stack.setCurrentIndex(1)
+        else:
+            if not (self.btn_glove.isChecked() or self.btn_eeg.isChecked()):
+                self.dash_stack.setCurrentIndex(0)
         self.btn_cam._update_style(checked)
         self.hub.set_camera_active(checked)
 
     def _toggle_glove(self, checked):
+        if checked:
+            self.btn_cam.setChecked(False)
+            self.btn_eeg.setChecked(False)
+            self.dash_stack.setCurrentIndex(2)
+        else:
+            if not (self.btn_cam.isChecked() or self.btn_eeg.isChecked()):
+                self.dash_stack.setCurrentIndex(0)
         self.btn_glove._update_style(checked)
         self.hub.set_glove_active(checked)
 
     def _toggle_eeg(self, checked):
+        if checked:
+            self.btn_cam.setChecked(False)
+            self.btn_glove.setChecked(False)
+            self.dash_stack.setCurrentIndex(3)
+        else:
+            if not (self.btn_cam.isChecked() or self.btn_glove.isChecked()):
+                self.dash_stack.setCurrentIndex(0)
         self.btn_eeg._update_style(checked)
         self.hub.set_eeg_active(checked)
 
@@ -696,17 +967,11 @@ class MainWindow(QMainWindow):
         self.status_bar_label.setText(f"● {message.upper()}")
 
     def update_glove_data(self, data):
-        self.glove_telemetry.show()
-        t = self._current_theme()
         sensors = data.get("sensors", [])
         for i, val in enumerate(sensors[:5]):
             if i < len(self.glove_bars):
                 self.glove_bars[i].setValue(int(val * 100))
-                color = "#10B981" if val < 0.5 else "#F59E0B"
-                self.glove_bars[i].setStyleSheet(f"""
-                    QProgressBar {{ background-color:{t['bar_bg']}; border-radius:4px; }}
-                    QProgressBar::chunk {{ background-color:{color}; border-radius:4px; }}
-                """)
+                self.glove_raw_labels[i].setText(f"{val:.2f}")
 
     def update_prediction(self, data):
         t = self._current_theme()
@@ -714,6 +979,7 @@ class MainWindow(QMainWindow):
         pred   = data.get("prediction", "N/A")
         conf   = data.get("confidence", 0)
         source = data.get("source", "UNKNOWN")
+        fingers = data.get("fingers", None)
 
         print(f"*** UI RECEIVE: {pred} FROM {source} ***")
 
@@ -724,21 +990,81 @@ class MainWindow(QMainWindow):
         color = "#10B981" if conf > 85 else t['text_bright']
         self.result_label.setStyleSheet(f"font-size:36px; font-weight:bold; color:{color};")
 
+        if fingers and source == "CAMERA":
+            keys = ['polegar', 'indicador', 'medio', 'anelar', 'minimo']
+            for i, k in enumerate(keys):
+                if i < len(self.cam_bars):
+                    val = fingers.get(k, 0)
+                    if k == 'polegar': 
+                        pct = val
+                    else:
+                        pct = max(0, min(100, (val - 60) / 120 * 100))
+                    self.cam_bars[i].setValue(int(pct))
+        elif source == "GLOVE":
+            self.glove_result_lbl.setText(pred)
+            self.glove_gesture_display.update_gesture(gid)
+            color = "#10B981" if conf > 85 else t['text_bright']
+            self.glove_result_lbl.setStyleSheet(f"font-size:24px; font-weight:bold; color:{color};")
+
+    def start_eeg_test(self):
+        self.eeg_test_active = True
+        self.eeg_test_phase = 1
+        self.eeg_test_seconds = 30
+        self.max_focus = 0
+        self.max_meditation = 0
+        self.eeg_test_lbl.setText("FASE 1: MAXIMIZE SEU FOCO! (30s)")
+        self.eeg_test_lbl.setStyleSheet("color:#EF4444; font-size:14px; font-weight:bold;")
+        self.eeg_timer.start(1000)
+        self.btn_test_eeg.setEnabled(False)
+        self.btn_test_eeg.setStyleSheet("background-color:#4B5563; color:#9CA3AF; border-radius:6px; padding:12px; font-weight:bold; font-size:12px;")
+
+    def _eeg_test_tick(self):
+        self.eeg_test_seconds -= 1
+        if self.eeg_test_seconds <= 0:
+            if self.eeg_test_phase == 1:
+                self.eeg_test_phase = 2
+                self.eeg_test_seconds = 30
+                self.eeg_test_lbl.setText("FASE 2: RELAXE PROFUNDAMENTE! (30s)")
+                self.eeg_test_lbl.setStyleSheet("color:#3B82F6; font-size:14px; font-weight:bold;")
+            else:
+                self.eeg_timer.stop()
+                self.eeg_test_active = False
+                self.eeg_test_lbl.setText(f"🏆 Foco: {self.max_focus}%  |  Relaxe: {self.max_meditation}%")
+                self.eeg_test_lbl.setStyleSheet("color:#10B981; font-size:13px; font-weight:bold;")
+                self.btn_test_eeg.setEnabled(True)
+                self.btn_test_eeg.setText("🔄 REINICIAR DESAFIO")
+                self.btn_test_eeg.setStyleSheet("background-color:#8B5CF6; color:#FFFFFF; border-radius:6px; padding:12px; font-weight:bold; font-size:12px;")
+        else:
+            if self.eeg_test_phase == 1:
+                self.eeg_test_lbl.setText(f"FASE 1: MAXIMIZE SEU FOCO! ({self.eeg_test_seconds}s)")
+            else:
+                self.eeg_test_lbl.setText(f"FASE 2: RELAXE PROFUNDAMENTE! ({self.eeg_test_seconds}s)")
+
     def update_eeg_data(self, data):
-        self.eeg_telemetry.show()
         att = data.get("attention", 0)
         med = data.get("meditation", 0)
         sig = data.get("signal", 200)
 
+        # Gamificação State Machine Hook
+        if getattr(self, "eeg_test_active", False):
+            if self.eeg_test_phase == 1 and att > self.max_focus:
+                self.max_focus = att
+            elif self.eeg_test_phase == 2 and med > self.max_meditation:
+                self.max_meditation = med
+
         self.attn_bar.setValue(att)
         self.med_bar.setValue(med)
+        
+        if hasattr(self, 'attn_plot'):
+            self.attn_plot.add_value(att)
+            self.med_plot.add_value(med)
 
-        status_text = "BOM" if sig < 50 else ("FALHANDO" if sig < 200 else "SEM SINAL")
-        self.eeg_label.setText(f"SINAL: {sig:3d}  [{status_text}]")
+        status_text = "CONEXÃO LIMPA" if sig < 50 else ("FALHANDO" if sig < 200 else "DISPOSITIVO OFF")
+        self.eeg_label.setText(f"SINAL {sig:3d}\n{status_text}")
 
-        color = "#10B981" if sig < 50 else "#EF4444"
+        color = "#10B981" if sig < 50 else ("#F59E0B" if sig < 200 else "#EF4444")
         self.eeg_label.setStyleSheet(
-            f"color:{color}; font-family:'Consolas', monospace; font-size:11px;"
+            f"color:{color}; font-family:'Consolas', monospace; font-size:14px; font-weight:bold;"
         )
 
 

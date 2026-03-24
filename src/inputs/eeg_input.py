@@ -64,9 +64,13 @@ class EEGInput(QThread):
                     start_time = time.time()
                     
                     while time.time() - start_time < 2.5:
-                        if self.eeg.serial and self.eeg.serial.in_waiting > 0:
-                            dados_recebidos = True
-                            print(f"[DEBUG EEG_INPUT] Bytes detectados na linha! ({self.eeg.serial.in_waiting} bytes)")
+                        try:
+                            if self.eeg.serial and self.eeg.serial.in_waiting > 0:
+                                dados_recebidos = True
+                                print(f"[DEBUG EEG_INPUT] Bytes detectados na linha! ({self.eeg.serial.in_waiting} bytes)")
+                                break
+                        except Exception as e:
+                            print(f"[DEBUG EEG_INPUT] Porta caiu inexperadamente durante verificação (Falso Positivo Crash): {e}")
                             break
                         time.sleep(0.1)
                         

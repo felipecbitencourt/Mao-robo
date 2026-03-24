@@ -1,101 +1,64 @@
-# 🤖 Mão Robótica - Controle por Gestos
+# 🤖 Mão Robótica Multimodal Pro
 
-Sistema de controle de mão robótica usando visão computacional com MediaPipe e Arduino.
+Sistema unificado e avançado para controle de uma Mão Robótica através de três interfaces de entrada interativas: **Visão Computacional (Câmera)**, **Luva Sensorial Óptica (5DT)** e **Sensores de Ondas Cerebrais (EEG BrainLink)**.
 
 ![Python](https://img.shields.io/badge/Python-3.13-blue)
+![PySide6](https://img.shields.io/badge/PySide6-GUI-orange)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10.31-green)
 ![Arduino](https://img.shields.io/badge/Arduino-Uno-teal)
 
-## 📋 Requisitos
+## 🌟 Funcionalidades Principais
 
-### Hardware
-- Arduino Uno (ou compatível)
-- 5 Servo motores (SG90 ou similar)
-- Fonte de alimentação externa 5V (recomendado para os servos)
-- Webcam
+- **Painel Centralizado (PySide6)**: Interface gráfica moderna com Tema Claro/Escuro e seleção interativa (ComboBox) de portas USB/Bluetooth.
+- **Modo Câmera**: Reconhecimento inteligente das mãos via MediaPipe, gerando gestos exatos ou acompanhamento fluido contínuo (PIP e MCP).
+- **Modo Luva Sensorial**: Mapeamento linear-segmentado (*piecewise linear interpolation*) de 15 sensores ópticos para movimentos perfeitamente contínuos e individuais dos 5 dedos em tempo real.
+- **Modo Neuro (EEG)**: Abertura e fechamento progressivo e sequencial dos dedos puramente comandado pelas suas ondas cerebrais (Modos de **Atenção** e **Meditação**).
+- **Perfis Inteligentes**: Salvamento automático de calibrações da Luva e preferências de usuário de forma invisível via `config.json`.
 
-### Software
-- Python 3.13+
-- Arduino IDE (para upload do StandardFirmata)
+## 📋 Requisitos de Hardware
 
-## 🚀 Instalação
+- Mão Robótica impulsionada por **5 Servo Motores** (SG90 ou similares).
+- **Arduino Uno** ou placa compatível rodando `StandardFirmata`.
+- Fonte de alimentação externa de 5V dedicada para os servos.
+- **Dispositivos de Entrada**: Webcam (Obrigatório), Tiara NeuroSky/BrainLink (Opcional), Luva 5DT Data Glove Ultra (Opcional).
 
-1. Clone o repositório
+## 🚀 Como Executar
+
+1. Clone o repositório do projeto.
 2. Instale as dependências:
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Carregue o **StandardFirmata** no seu Arduino via Arduino IDE (`Arquivo > Exemplos > Firmata > StandardFirmata`).
+4. Execute o hub central:
+   ```bash
+   python main.py
+   ```
+5. Selecione suas portas COM no menu suspenso ou deixe o `Detectar Portas` encontrar e mapear o Arduino e a tiara EEG automaticamente!
 
-3. Carregue o **StandardFirmata** no Arduino:
-   - Arduino IDE → Arquivo → Exemplos → Firmata → StandardFirmata
-   - Selecione a porta COM correta
-   - Upload
+## 📁 Arquitetura Modular (`src/`)
 
-## 📁 Estrutura do Projeto
+A base de código foi totalmente reestruturada para máxima performance e baixo acoplamento:
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `main.py` | Controle por gestos (IA híbrida) |
-| `main_fluido.py` | Controle proporcional suave |
-| `main_fluido_v2.py` | Controle proporcional + multi-ângulo + temporal |
-| `testar-dedos.py` | Teste de calibração dos servos |
-| `servo_braco3d.py` | Biblioteca de controle dos servos |
-| `launcher.py` | Interface gráfica do executável |
+| Diretório | Descrição de Domínio |
+|-----------|----------------------|
+| `/core` | Central de tráfego de dados (`HubController`) e armazenamento de dados locais (`config_manager.py`). |
+| `/inputs` | Classes que rodam em Threads isoladas escutando as entradas (`camera_input`, `eeg_input`, `glove_input`). |
+| `/outputs` | Comunicação final com o StandardFirmata / Motores (`arduino_output`). |
+| `/processing` | Máquinas de cálculos aritméticos (MediaPipe, Geometria de Dedos). |
+| `/ui` | Construção de botões, barras de progresso dinâmicas e janelas Qt. |
 
-## 🎮 Modos de Operação
+## 🔌 Pinagem Padrão do Arduino
 
-### 1. Modo Gestos (`main.py`)
-Reconhece gestos completos usando IA:
-- ✊ Punho fechado
-- ✋ Palma aberta  
-- ✌️ Vitória
-- 👍 Joinha
-- 🤘 Rock
-
-### 2. Modo Fluido (`main_fluido.py`)
-Controle proporcional - a mão robótica imita a posição exata dos seus dedos.
-
-### 3. Modo Fluido V2 (`main_fluido_v2.py`)
-Versão aprimorada com:
-- 2 ângulos por dedo (MCP + PIP)
-- Média temporal de 5 frames
-- Maior estabilidade
-
-## ⚙️ Calibração
-
-Os valores de fechamento de cada dedo estão em `servo_braco3d.py`:
-
-```python
-VALORES_FECHADOS = {
-    10: 150,  # Polegar
-    9: 180,   # Indicador
-    8: 160,   # Médio
-    7: 180,   # Anelar
-    6: 130    # Mínimo
-}
-```
-
-Use `testar-dedos.py` para encontrar os valores ideais.
-
-## 🔌 Pinagem Arduino
+A ligação PWM dos servos na mão segue o alinhamento:
 
 | Dedo | Pino |
 |------|------|
-| Polegar | 10 |
-| Indicador | 9 |
-| Médio | 8 |
-| Anelar | 7 |
-| Mínimo | 6 |
-
-## 📦 Executável
-
-O arquivo `MaoRobotica.exe` na pasta `dist/` permite usar o sistema sem instalar Python.
-
-## 🛠️ Troubleshooting
-
-- **Servos não movem:** Verifique se o StandardFirmata foi carregado no Arduino
-- **Porta COM errada:** Edite `PORTA_COM` nos arquivos Python
-- **Movimentos instáveis:** Use o Modo Fluido V2 para maior estabilidade
+| Polegar | Pino 10 |
+| Indicador | Pino 9 |
+| Médio | Pino 8 |
+| Anelar | Pino 7 |
+| Mínimo | Pino 6 |
 
 ---
-Desenvolvido com ❤️ usando MediaPipe e PyFirmata
+**Desenvolvido com foco no futuro da robótica assistiva multimodal.**
