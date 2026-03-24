@@ -59,6 +59,18 @@ class ArduinoOutput(QObject):
             7: 180,   # Anelar
             6: 130    # Minimo
         }
+        
+        self.pin_map = {
+            'polegar': 10,
+            'indicador': 9,
+            'medio': 8,
+            'anelar': 7,
+            'minimo': 6
+        }
+        
+        # Estado atual dos servos para suavização no modo fluido
+        self.posicao_atual = {pin: 0 for pin in self.pins}
+        
         self._available_ports = []
 
     @staticmethod
@@ -111,19 +123,53 @@ class ArduinoOutput(QObject):
         else:
             print("DEBUG ARDUINO: Impossível testar - Hardware não conectado.")
 
-    def send_hand_command(self, gesture_id):
-        """Envia comando de gesto"""
-        if not self.board:
-            return
-            
-        print(f"DEBUG ARDUINO: Enviando Gesto ID {gesture_id} para a mão...")
-        """
-        Recebe ID do gesto e move os servos da mão.
-        Ex: ID 15 (Mão Aberta) -> Todos em 0 graus.
-        Ex: ID 0 (Punho Fechado) -> Todos nos valores de fechamento.
-        """
+    def mover_servo_suave(self, pino, posicao_alvo):
+        """Move o servo suavemente para a posição alvo usando lerp"""
+        if not self.board or not self.active: return
+        
+        max_pos = self.VALORES_FECHADOS.get(pino, 140)
+        posicao_alvo = max(0, min(max_pos, posicao_alvo))
+        
+        fator = 0.3
+        nova_pos = self.posicao_atual[pino] + (posicao_alvo - self.posicao_atual[pino]) * fator
+        nova_pos = int(nova_pos)
+        
+        # Move se a diferença for significativa para evitar jitter
+        if abs(nova_pos - self.posicao_atual[pino]) >= 1:
+            self.board.digital[pino].write(nova_pos)
+            self.posicao_atual[pino] = nova_pos
+
+    def mapear_angulo_para_servo(self, angulo, pino):
+        """Mapeia ângulo do dedo (0-180) para pwm do servo"""
+        max_servo = self.VALORES_FECHADOS.get(pino, 140)
+        angulo_normalizado = (angulo - 60) / 120  # 60-180 -> 0-1
+        angulo_normalizado = max(0, min(1, angulo_normalizado))
+        posicao = max_servo * (1 - angulo_normalizado)
+        return posicao
+
+    def send_hand_command(self, gesture_id, fingers_data=None):
+        """Envia comando de gesto ou posições fluidas para a mão"""
         if not self.board or not self.active:
             return
+
+        # Se os dados proporcionais dos dedos estiverem disponíveis (Modo Fluido)
+        if fingers_data and isinstance(fingers_data, dict) and 'polegar' in fingers_data:
+            # Polegar (recebe ratio * 100 de 0 a 100+)
+            ratio_polegar = fingers_data.get('polegar', 100) / 100.0
+            polegar_pos = self.VALORES_FECHADOS[10] * (1 - max(0, min(1, (ratio_polegar - 0.5) / 0.8)))
+            self.mover_servo_suave(10, polegar_pos)
+            
+            # Demais dedos
+            for nome_dedo, angulo in fingers_data.items():
+                if nome_dedo == 'polegar': continue
+                
+                pino = self.pin_map.get(nome_dedo)
+                if pino:
+                    pos_alvo = self.mapear_angulo_para_servo(angulo, pino)
+                    self.mover_servo_suave(pino, pos_alvo)
+            return
+            
+        print(f"DEBUG ARDUINO: Enviando Gesto ID {gesture_id} para a mão (Modo Binário)...")
 
         # Para fins de simplificação neste Hub:
         # Se ID for 15 (Aberta), abre tudo.

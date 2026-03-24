@@ -1,4 +1,9 @@
+import os
 import sys
+
+# Adiciona a pasta src ao path para encontrar os módulos (ui, core, hardware, etc)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 from PySide6.QtWidgets import QApplication
 from ui.main_window import MainWindow
 

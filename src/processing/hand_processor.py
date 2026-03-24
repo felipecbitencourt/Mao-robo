@@ -10,7 +10,7 @@ class HandProcessor(QThread):
     prediction_signal = Signal(dict)
     processed_frame_signal = Signal(object) # Envia frame com os pontos desenhados
 
-    def __init__(self, model_path="hand_landmarker.task"):
+    def __init__(self, model_path="models/hand_landmarker.task"):
         super().__init__()
         self.frame_queue = queue.Queue(maxsize=1)
         self.running = False

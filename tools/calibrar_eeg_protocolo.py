@@ -11,7 +11,12 @@ import random
 import json
 import winsound
 import os
-from eeg_brainlink import BrainLinkParser, BrainLinkData
+import sys
+
+# Adiciona o diretório raiz ao path para permitir imports de src
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from src.hardware.eeg_brainlink import BrainLinkParser, BrainLinkData
 
 # Configurações
 PORTA_COM_EEG = 'COM6'
@@ -219,7 +224,7 @@ class CalibradorEEG:
     
     def salvar_calibracao(self, resultados):
         """Salva resultados em arquivo JSON"""
-        arquivo = 'calibracao_eeg.json'
+        arquivo = 'config/calibracao_eeg.json'
         with open(arquivo, 'w', encoding='utf-8') as f:
             json.dump(resultados, f, indent=2, ensure_ascii=False)
         print(f"\n💾 Calibração salva em: {arquivo}")

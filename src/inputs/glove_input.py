@@ -8,7 +8,7 @@ class GloveInput(QThread):
     data_signal = Signal(dict)
     status_signal = Signal(str)
 
-    def __init__(self, exe_path="luva/python-project/TestGlove64.exe", port="USB0"):
+    def __init__(self, exe_path="src/luva/python-project/TestGlove64.exe", port="USB0"):
         super().__init__()
         self.exe_path = os.path.abspath(exe_path)
         self.port = port

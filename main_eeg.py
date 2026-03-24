@@ -9,11 +9,17 @@ import numpy as np
 import serial
 import json
 import os
-from eeg_brainlink import BrainLinkEEG, BrainLinkData
-import servo_braco3d as mao
+import os
+import sys
+
+# Adiciona a pasta src ao path para encontrar os módulos (hardware, core, etc)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
+from hardware.eeg_brainlink import BrainLinkEEG, BrainLinkData
+import hardware.servo_braco3d as mao
 
 # --- Configurações ---
-PORTA_COM_EEG = 'COM6'  # Ajuste conforme sua porta
+PORTA_COM_EEG = 'COM4'  # Ajuste conforme sua porta
 BAUDRATE = 57600
 
 # Thresholds (ajustáveis via calibração)
@@ -24,7 +30,7 @@ DEBOUNCE_TIME = 1.0  # Segundos para evitar mudanças rápidas
 def carregar_calibracao():
     """Carrega threshold da calibração se existir"""
     global THRESHOLD_CONCENTRACAO
-    arquivo = 'calibracao_eeg.json'
+    arquivo = 'config/calibracao_eeg.json'
     
     if os.path.exists(arquivo):
         try:
@@ -41,7 +47,7 @@ def carregar_calibracao():
     else:
         print(f"⚠️  Arquivo de calibração não encontrado.")
         print(f"   Usando threshold padrão: {THRESHOLD_CONCENTRACAO}")
-        print(f"   Execute: python calibrar_eeg_protocolo.py")
+        print(f"   Execute: python tools/calibrar_eeg_protocolo.py")
     return False
 
 # Estados da mão

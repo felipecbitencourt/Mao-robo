@@ -9,8 +9,16 @@ class GestureDisplay(QLabel):
         self.images_path = os.path.abspath(images_path)
         self.setAlignment(Qt.AlignCenter)
         self.setFixedSize(250, 250)
-        self.setStyleSheet("background-color: #121212; border: 1px solid #2A2A40; border-radius: 12px;")
-        self.setText("AGUARDANDO GESTO")
+        self.setStyleSheet("""
+            background-color: #0C0C14;
+            border: 1px solid #1E1E34;
+            border-radius: 12px;
+            color: #505068;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        """)
+        self.setText("AGUARDANDO\nGESTO")
 
     def update_gesture(self, gesture_id):
         """Carrega e exibe a imagem correspondente ao gesto_id"""

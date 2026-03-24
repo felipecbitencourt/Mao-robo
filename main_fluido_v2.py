@@ -6,6 +6,12 @@ import cv2
 import mediapipe as mp
 import time
 import numpy as np
+import os
+import sys
+
+# Adiciona a pasta src ao path para encontrar os módulos
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 import inspect
 from collections import deque
 
@@ -48,7 +54,7 @@ HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
 options = HandLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path='hand_landmarker.task'),
+    base_options=BaseOptions(model_asset_path='models/hand_landmarker.task'),
     running_mode=VisionRunningMode.VIDEO,
     num_hands=1,
     min_hand_detection_confidence=0.5,
