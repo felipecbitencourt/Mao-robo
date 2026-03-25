@@ -520,7 +520,7 @@ class MainWindow(QMainWindow):
         cam_data_layout = QHBoxLayout(self.cam_data)
         cam_data_layout.setContentsMargins(16, 14, 16, 14)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.gesture_display = GestureDisplay(images_path=os.path.join(base_dir, "luva", "gesture-images"))
+        self.gesture_display = GestureDisplay()
         cam_data_layout.addWidget(self.gesture_display)
 
         text_col = QVBoxLayout()
@@ -628,7 +628,7 @@ class MainWindow(QMainWindow):
         gd_inner.setContentsMargins(16, 14, 16, 14)
         gd_inner.setSpacing(10)
         
-        self.glove_gesture_display = GestureDisplay(images_path=os.path.join(base_dir, "luva", "gesture-images"))
+        self.glove_gesture_display = GestureDisplay()
         gd_inner.addWidget(self.glove_gesture_display, alignment=Qt.AlignCenter)
         
         self.glove_result_lbl = QLabel("SEM SINAL")

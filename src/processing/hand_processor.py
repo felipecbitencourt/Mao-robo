@@ -6,6 +6,8 @@ import queue
 import os
 from PySide6.QtCore import QObject, QThread, Signal
 
+from core.paths import resource_path
+
 class HandProcessor(QThread):
     prediction_signal = Signal(dict)
     processed_frame_signal = Signal(object) # Envia frame com os pontos desenhados
@@ -14,7 +16,7 @@ class HandProcessor(QThread):
         super().__init__()
         self.frame_queue = queue.Queue(maxsize=1)
         self.running = False
-        self.model_path = os.path.abspath(model_path)
+        self.model_path = resource_path(model_path)
         
         # Configuração MediaPipe Tasks (Idêntico ao main_fluido_v2.py)
         self.BaseOptions = mp.tasks.BaseOptions

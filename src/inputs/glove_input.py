@@ -3,6 +3,7 @@ import sys
 import os
 import time
 from PySide6.QtCore import QThread, Signal
+from core.paths import resource_path
 
 class GloveInput(QThread):
     data_signal = Signal(dict)
@@ -10,7 +11,7 @@ class GloveInput(QThread):
 
     def __init__(self, exe_path="src/luva/python-project/TestGlove64.exe", port="USB0"):
         super().__init__()
-        self.exe_path = os.path.abspath(exe_path)
+        self.exe_path = resource_path(exe_path)
         self.port = port
         self.running = False
         self.process = None

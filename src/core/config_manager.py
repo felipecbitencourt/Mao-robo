@@ -1,14 +1,21 @@
 import json
 import os
+import sys
 
 class ConfigManager:
     """
     Gerenciador de configurações persistentes para o Mao-robo.
-    Salva as preferências e calibrações no arquivo config.json na raiz do projeto.
+    Salva as preferências e calibrações no arquivo config.json na raiz do projeto
+    ou na raiz do repositório executável nativo.
     """
     def __init__(self, filename="config.json"):
-        # Diretório raiz (Mao-robo) independente de onde o script for executado
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if getattr(sys, 'frozen', False):
+            # Se empacotado pelo PyInstaller, gravar ao lado do executável final
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            # Diretório raiz (Mao-robo) local no código
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
         self.filepath = os.path.join(base_dir, filename)
         
         # Configuração padrão caso o arquivo não exista

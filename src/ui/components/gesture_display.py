@@ -3,10 +3,12 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtGui import QPixmap, QImage
 from PySide6.QtCore import Qt
 
+from core.paths import resource_path
+
 class GestureDisplay(QLabel):
-    def __init__(self, images_path="luva/gesture-images"):
+    def __init__(self, images_path="src/luva/gesture-images"):
         super().__init__()
-        self.images_path = os.path.abspath(images_path)
+        self.images_path = resource_path(images_path)
         self.setAlignment(Qt.AlignCenter)
         self.setFixedSize(250, 250)
         self.setStyleSheet("""

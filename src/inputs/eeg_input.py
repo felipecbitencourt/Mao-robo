@@ -13,10 +13,18 @@ class EEGInput(QThread):
         self.running = False
         self.eeg = None
         self.auto_scan = True # Modificado para True para descobrir o Brainlink
+        self.last_emit = 0
 
     def _on_data(self, data: BrainLinkData):
         """Callback para receber dados do parser e emitir sinal Qt"""
-        # Debug log para o EEG
+        now = time.time()
+        # Rate-limiting: Emite apenas 4 vezes por segundo
+        if now - self.last_emit < 0.25:
+            return
+            
+        self.last_emit = now
+        
+        # Debug log para o EEG apenas de vez em quando
         print(f"DEBUG EEG: Att: {data.attention:3d} | Med: {data.meditation:3d} | Sig: {data.signal:3d}")
         
         self.data_signal.emit({
