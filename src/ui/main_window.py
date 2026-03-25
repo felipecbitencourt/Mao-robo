@@ -190,6 +190,14 @@ class MainWindow(QMainWindow):
         self.eeg_timer = QTimer(self)
         self.eeg_timer.timeout.connect(self._eeg_test_tick)
 
+        # Calibração Clínica (10 ciclos)
+        self.clin_cal_active = False
+        self.clin_cal_cycle = 0
+        self.clin_cal_phase = 0 # 0: Aguardando, 1: OPEN, 2: CLOSED
+        self.clin_cal_seconds = 0
+        self.clin_timer = QTimer(self)
+        self.clin_timer.timeout.connect(self._clin_cal_tick)
+
         self._init_ui()
 
         # Redirecionamento de Logs para In-App Console
@@ -315,28 +323,74 @@ class MainWindow(QMainWindow):
         )
 
     # ── Calibração ────────────────────────────────────────────── #
+    # ── Calibração Clínica (10 Ciclos) ────────────────────────── #
     def start_calibration_sequence(self):
+        """Inicia o protocolo clínico de 10 ciclos"""
         self.btn_calibrate_glove.setEnabled(False)
-        self.hub.status_signal.emit("Iniciando calibração em 3 passos...")
-        self._run_calib_step("FECHE A MÃO COMPLETAMENTE", "CLOSED", 0)
-        QTimer.singleShot(4000, lambda: self._run_calib_step("MANTENHA A MÃO RELAXADA (MEIO)", "HALF", 1))
-        QTimer.singleShot(8000, lambda: self._run_calib_step("ABRA A MÃO COMPLETAMENTE", "OPEN", 2))
-        QTimer.singleShot(12000, self.finish_calibration_ui)
+        self.clin_cal_active = True
+        self.clin_cal_cycle = 1
+        self.clin_cal_phase = 1 # Inicia com OPEN
+        self.clin_cal_seconds = 5
+        
+        self.hub.status_signal.emit("Iniciando Protocolo Clínico (10 Ciclos)...")
+        self._update_clin_cal_ui()
+        self.clin_timer.start(1000)
 
-    def _run_calib_step(self, msg, state, step_idx):
-        print(f"DEBUG UI: Passo {step_idx} - {state}")
-        self.result_label.setText(msg)
-        self.result_label.setStyleSheet("font-size:22px; color:#F59E0B; font-weight:bold;")
-        QTimer.singleShot(1000, lambda: self.hub.start_glove_calibration(state))
-        QTimer.singleShot(4000, lambda: self.hub.finish_glove_calibration_step())
+    def _clin_cal_tick(self):
+        if not self.clin_cal_active:
+            return
+
+        self.clin_cal_seconds -= 1
+        
+        # Notifica o Hub para começar/continuar capturando no estágio atual
+        if self.clin_cal_seconds == 4: # No primeiro segundo do tick (5->4), garante que o hub está pronto
+            stage = 'OPEN' if self.clin_cal_phase == 1 else 'CLOSED'
+            self.hub.start_clinical_step(stage)
+
+        if self.clin_cal_seconds <= 0:
+            # Finaliza o estágio atual no Hub
+            self.hub.stop_clinical_step()
+            
+            if self.clin_cal_phase == 1:
+                # Muda para fase CLOSED
+                self.clin_cal_phase = 2
+                self.clin_cal_seconds = 5
+            else:
+                # Ciclo completo, verifica se acabou
+                if self.clin_cal_cycle >= 10:
+                    self.finish_calibration_ui()
+                    return
+                else:
+                    self.clin_cal_cycle += 1
+                    self.clin_cal_phase = 1
+                    self.clin_cal_seconds = 5
+        
+        self._update_clin_cal_ui()
+
+    def _update_clin_cal_ui(self):
+        msg = "ABRA A MÃO COMPLETAMENTE" if self.clin_cal_phase == 1 else "FECHE A MÃO COMPLETAMENTE"
+        color = "#10B981" if self.clin_cal_phase == 1 else "#EF4444"
+        
+        self.result_label.setText(f"C{self.clin_cal_cycle}/10: {msg} ({self.clin_cal_seconds}s)")
+        self.result_label.setStyleSheet(f"font-size:20px; color:{color}; font-weight:bold;")
 
     def finish_calibration_ui(self):
+        self.clin_cal_active = False
+        self.clin_timer.stop()
+        
+        success = self.hub.calculate_clinical_final()
+        
         self.btn_calibrate_glove.setEnabled(True)
-        self.result_label.setText("CALIBRAÇÃO CONCLUÍDA")
-        self.result_label.setStyleSheet("font-size:30px; color:#10B981; font-weight:bold;")
-        self.hub.status_signal.emit("Luva calibrada com sucesso!")
+        if success:
+            self.result_label.setText("CALIBRAÇÃO CLÍNICA CONCLUÍDA")
+            self.result_label.setStyleSheet("font-size:28px; color:#10B981; font-weight:bold;")
+            self.hub.status_signal.emit("Protocolo finalizado com sucesso!")
+        else:
+            self.result_label.setText("ERRO NA CALIBRAÇÃO")
+            self.result_label.setStyleSheet("font-size:28px; color:#EF4444; font-weight:bold;")
+
         t = self._current_theme()
-        QTimer.singleShot(2000, lambda: self.result_label.setStyleSheet(
+        QTimer.singleShot(3000, lambda: self.result_label.setStyleSheet(
             f"font-size:36px; color:{t['text_bright']}; font-weight:bold;"
         ))
 
@@ -968,10 +1022,19 @@ class MainWindow(QMainWindow):
 
     def update_glove_data(self, data):
         sensors = data.get("sensors", [])
+        thresholds = getattr(self.hub, "clinical_thresholds", [])
+        
         for i, val in enumerate(sensors[:5]):
             if i < len(self.glove_bars):
                 self.glove_bars[i].setValue(int(val * 100))
-                self.glove_raw_labels[i].setText(f"{val:.2f}")
+                
+                # Se tivermos threshold clínico, mostra no label
+                if len(thresholds) > i:
+                    t_val = thresholds[i]
+                    self.glove_raw_labels[i].setText(f"{val:.2f} (T:{t_val:.2f})")
+                    self.glove_raw_labels[i].setFixedWidth(100) # Expande para caber o threshold
+                else:
+                    self.glove_raw_labels[i].setText(f"{val:.2f}")
 
     def update_prediction(self, data):
         t = self._current_theme()

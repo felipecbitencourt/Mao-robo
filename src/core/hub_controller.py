@@ -42,6 +42,15 @@ class HubController(QObject):
         self.calibrated_vectors = self.config.get("glove_calibration", {})
         self.glove_weights = self.config.get("glove_weights", [1.0, 1.0, 1.0, 1.0, 1.0])
         
+        # Clinical Calibration (10 cycles)
+        self.clinical_calibration_active = False
+        self.clinical_stage = None # 'OPEN', 'CLOSED'
+        self.clinical_max_buffer = [] # List of max per cycle
+        self.clinical_min_buffer = [] # List of min per cycle
+        self.current_sample_max = None
+        self.current_sample_min = None
+        self.clinical_thresholds = self.config.get("glove_clinical_thresholds", [])
+        
         # Conexão: Frames da câmera -> Processador de Mão
         self.processor.prediction_signal.connect(self._handle_camera_prediction)
         self.processor.processed_frame_signal.connect(self.frame_signal.emit) 
@@ -120,19 +129,49 @@ class HubController(QObject):
             self.glove_signal.emit(data)
             return
 
+        # Logica de Calibração Clínica em Tempo Real
+        if self.clinical_calibration_active:
+            if self.clinical_stage == 'OPEN':
+                if self.current_sample_max is None:
+                    self.current_sample_max = sensors[:]
+                else:
+                    self.current_sample_max = [max(a, b) for a, b in zip(self.current_sample_max, sensors)]
+            elif self.clinical_stage == 'CLOSED':
+                if self.current_sample_min is None:
+                    self.current_sample_min = sensors[:]
+                else:
+                    self.current_sample_min = [min(a, b) for a, b in zip(self.current_sample_min, sensors)]
+            
+            self.glove_signal.emit(data)
+            return
+
         gid = data.get("gesture_id", -1)
         fingers_data = None
         
         # Mapeamento Dinâmico Fluido direto dos sensores nativos para ângulos do Arduino!
         if len(sensors) >= 5:
-            # Multiplicador Dinâmico Sensível
-            s0 = max(0.0, min(1.0, sensors[0] * self.glove_weights[0]))
-            s1 = max(0.0, min(1.0, sensors[1] * self.glove_weights[1]))
-            s2 = max(0.0, min(1.0, sensors[2] * self.glove_weights[2]))
-            s3 = max(0.0, min(1.0, sensors[3] * self.glove_weights[3]))
-            s4 = max(0.0, min(1.0, sensors[4] * self.glove_weights[4]))
+            # Se tivermos calibração clínica (18 thresholds), usamos para normalizar os 5 principais
+            if len(self.clinical_thresholds) >= 5:
+                # Normalização Binária/Suave baseada no threshold clínico
+                # Se acima do threshold (FECHADO), se abaixo (ABERTO)
+                # Para o motor, 1.0 é aberto, 0.0 é fechado. 
+                # sensors[i] >= threshold -> fechado (0.0)
+                # sensors[i] < threshold -> aberto (1.0)
+                s0 = 0.0 if sensors[0] >= self.clinical_thresholds[0] else 1.0
+                s1 = 0.0 if sensors[1] >= self.clinical_thresholds[1] else 1.0
+                s2 = 0.0 if sensors[2] >= self.clinical_thresholds[2] else 1.0
+                s3 = 0.0 if sensors[3] >= self.clinical_thresholds[3] else 1.0
+                s4 = 0.0 if sensors[4] >= self.clinical_thresholds[4] else 1.0
+            else:
+                # Multiplicador Dinâmico Sensível (fallback)
+                s0 = max(0.0, min(1.0, sensors[0] * self.glove_weights[0]))
+                s1 = max(0.0, min(1.0, sensors[1] * self.glove_weights[1]))
+                s2 = max(0.0, min(1.0, sensors[2] * self.glove_weights[2]))
+                s3 = max(0.0, min(1.0, sensors[3] * self.glove_weights[3]))
+                s4 = max(0.0, min(1.0, sensors[4] * self.glove_weights[4]))
             
             # Inversão Físico-Robótica: 1.0 da luva (Aberto) mapeia para 60º na Garra
+
             # 0.0 da luva (Fechado) mapeia para 180º ou 100% no Polegar
             fingers_data = {
                 'polegar': (1.0 - s0) * 100.0,
@@ -199,6 +238,46 @@ class HubController(QObject):
         
         # Persiste a calibração silenciosamente no arquivo JSON
         self.config.set("glove_calibration", self.calibrated_vectors)
+
+    def start_clinical_step(self, stage):
+        """Inicia a captura para um passo de calibração clínica (OPEN ou CLOSED)"""
+        print(f"DEBUG HUB: Iniciando captura clínica - ESTÁGIO: {stage}")
+        self.clinical_stage = stage
+        self.clinical_calibration_active = True
+        self.current_sample_max = None
+        self.current_sample_min = None
+
+    def stop_clinical_step(self):
+        """Finaliza a captura do estágio atual e armazena os extremos se for o caso"""
+        if self.clinical_stage == 'OPEN' and self.current_sample_max:
+            self.clinical_max_buffer.append(self.current_sample_max)
+        elif self.clinical_stage == 'CLOSED' and self.current_sample_min:
+            self.clinical_min_buffer.append(self.current_sample_min)
+        
+        self.clinical_calibration_active = False
+        self.clinical_stage = None
+
+    def calculate_clinical_final(self):
+        """Calcula a média dos limites e gera os thresholds finais"""
+        if not self.clinical_max_buffer or not self.clinical_min_buffer:
+            return False
+            
+        import numpy as np
+        # Média dos máximos capturados no estágio OPEN
+        avg_max = np.mean(self.clinical_max_buffer, axis=0)
+        # Média dos mínimos capturados no estágio CLOSED
+        avg_min = np.mean(self.clinical_min_buffer, axis=0)
+        
+        # Threshold é o ponto médio (mesma lógica do script felipe_realtime)
+        self.clinical_thresholds = ((avg_max + avg_min) / 2.0).tolist()
+        
+        self.config.set("glove_clinical_thresholds", self.clinical_thresholds)
+        print(f"DEBUG HUB: Calibração Clínica concluída. {len(self.clinical_thresholds)} thresholds salvos.")
+        
+        # Limpa buffers
+        self.clinical_max_buffer = []
+        self.clinical_min_buffer = []
+        return True
 
     def _calculate_fluid_fingers(self, sensors):
         FINGER_MAP = {
