@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFrame, QGraphicsDropShadowEffect,
     QLineEdit, QProgressBar, QSizePolicy, QRadioButton, QButtonGroup,
-    QComboBox, QStackedWidget, QDoubleSpinBox, QTextEdit
+    QComboBox, QStackedWidget, QDoubleSpinBox, QTextEdit, QScrollArea
 )
 
 from core.hub_controller import HubController
@@ -14,6 +14,7 @@ from ui.components.video_display import VideoDisplay
 from ui.components.gesture_display import GestureDisplay
 from ui.components.custom_buttons import ActionButton, AnimatedButton
 from ui.components.spectrogram_widget import SpectrogramWidget
+from ui.components.nav_header import NavHeader
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -231,6 +232,27 @@ class MainWindow(QMainWindow):
 
     def _apply_theme(self):
         t = self._current_theme()
+        
+        if hasattr(self, 'header'):
+            self.header.update_theme(self._dark_mode, t)
+
+        if hasattr(self, 'eeg_scroll'):
+            self.eeg_scroll.setStyleSheet(f"""
+                QScrollArea {{ border: none; background: transparent; }}
+                QScrollBar:horizontal {{
+                    height: 10px; background: transparent; margin: 0;
+                }}
+                QScrollBar::handle:horizontal {{
+                    background: {t['border']}; border-radius: 5px; min-width: 20px;
+                }}
+                QScrollBar::handle:horizontal:hover {{ background: {t['text_dim']}; }}
+                QScrollBar:vertical {{
+                    width: 8px; background: transparent; margin: 0;
+                }}
+                QScrollBar::handle:vertical {{
+                    background: {t['border']}; border-radius: 4px; min-height: 20px;
+                }}
+            """)
 
         if hasattr(self, 'btn_nav_dash'):
             self.nav_container.setStyleSheet(f"background-color:{t['input_bg']}; border-radius:10px;")
@@ -424,7 +446,31 @@ class MainWindow(QMainWindow):
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        main_layout = QHBoxLayout(central_widget)
+        
+        # O novo layout principal é VERTICAL para caber o Header no topo
+        layout_principal = QVBoxLayout(central_widget)
+        layout_principal.setContentsMargins(0, 0, 0, 0)
+        layout_principal.setSpacing(0)
+
+        # ── HEADER ────────────────────────────────────────────────
+        self.header = NavHeader(self)
+        self.header.theme_toggled.connect(self._toggle_theme)
+        layout_principal.addWidget(self.header)
+
+        # Conectar sinais do Hub para o HUD (Novo Header Global)
+        self.hub.arduino_status_signal.connect(self.header.set_arduino_status)
+        self.hub.fps_signal.connect(self.header.set_fps)
+        self.hub.eeg_signal.connect(lambda data: self.header.set_eeg_quality(data.get("signal", 200)))
+        
+        # Estado Inicial do HUD
+        if hasattr(self.hub, 'arduino'):
+            self.header.set_arduino_status(self.hub.arduino.board is not None)
+
+        # ── CONTAINER DE CONTEÚDO (Sidebar + Stack) ───────────────
+        container_conteudo = QWidget()
+        layout_principal.addWidget(container_conteudo)
+        
+        main_layout = QHBoxLayout(container_conteudo)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
@@ -555,43 +601,6 @@ class MainWindow(QMainWindow):
         dash_layout = QVBoxLayout(self.page_dashboard)
         dash_layout.setContentsMargins(28, 22, 28, 0)
         dash_layout.setSpacing(18)
-
-        header_dash = QHBoxLayout()
-        app_title = QLabel("DASHBOARD PRINCIPAL")
-        app_title.setObjectName("app_title")
-        header_dash.addWidget(app_title)
-        header_dash.addStretch()
-
-        # HUD Indicators Group
-        self.hud_container = QFrame()
-        self.hud_container.setStyleSheet("background:rgba(26, 26, 38, 0.6); border-radius:15px; border:1px solid #2B2B3E;")
-        hud_lyt = QHBoxLayout(self.hud_container)
-        hud_lyt.setContentsMargins(15, 5, 15, 5)
-        hud_lyt.setSpacing(20)
-
-        self.arduino_indicator = QLabel("● ARDUINO: OFF")
-        self.arduino_indicator.setStyleSheet("color:#EF4444; font-weight:bold; font-size:11px;")
-        
-        self.eeg_indicator = QLabel("● EEG: OFF")
-        self.eeg_indicator.setStyleSheet("color:#EF4444; font-weight:bold; font-size:11px;")
-
-        self.fps_indicator = QLabel("● FPS: 0")
-        self.fps_indicator.setStyleSheet("color:#7D7D9C; font-weight:bold; font-size:11px;")
-
-        hud_lyt.addWidget(self.arduino_indicator)
-        hud_lyt.addWidget(self.eeg_indicator)
-        hud_lyt.addWidget(self.fps_indicator)
-        
-        header_dash.addWidget(self.hud_container)
-        dash_layout.addLayout(header_dash)
-
-        # Conectar sinais do Hub para o HUD
-        self.hub.arduino_status_signal.connect(self.update_arduino_hud)
-        self.hub.fps_signal.connect(self.update_fps_hud)
-        self.hub.eeg_signal.connect(self.update_eeg_hud)
-        
-        # Estado Inicial
-        self.update_arduino_hud(self.hub.arduino.board is not None)
 
         # DASHBOARD SUB-PAGES MANAGER
         self.dash_stack = QStackedWidget()
@@ -767,8 +776,21 @@ class MainWindow(QMainWindow):
 
         # ── SUBTELA 3: EEG BRAINLINK ──
         self.dash_eeg = QFrame()
-        eeg_layout = QVBoxLayout(self.dash_eeg)
-        eeg_layout.setContentsMargins(0, 0, 0, 0)
+        eeg_outer_lyt = QVBoxLayout(self.dash_eeg)
+        eeg_outer_lyt.setContentsMargins(0, 0, 0, 0)
+
+        self.eeg_scroll = QScrollArea()
+        self.eeg_scroll.setWidgetResizable(True)
+        self.eeg_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.eeg_scroll.setFrameShape(QFrame.NoFrame)
+
+        self.eeg_scroll_content = QWidget()
+        self.eeg_scroll_content.setMinimumWidth(1050) # Garante que o scroll lateral funcione em telas menores
+        self.eeg_scroll.setWidget(self.eeg_scroll_content)
+        eeg_outer_lyt.addWidget(self.eeg_scroll)
+
+        eeg_layout = QVBoxLayout(self.eeg_scroll_content)
+        eeg_layout.setContentsMargins(28, 22, 28, 22)
         eeg_layout.setSpacing(18)
 
         eeg_split = QHBoxLayout()
@@ -1428,23 +1450,6 @@ class MainWindow(QMainWindow):
         self.eeg_label.setStyleSheet(
             f"color:{color}; font-family:'Consolas', monospace; font-size:14px; font-weight:bold;"
         )
-
-    def update_arduino_hud(self, connected):
-        color = "#10B981" if connected else "#EF4444"
-        self.arduino_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:11px;")
-        self.arduino_indicator.setText(f"● ARDUINO: {'OK' if connected else 'OFF'}")
-
-    def update_fps_hud(self, fps):
-        color = "#10B981" if fps > 22 else ("#F59E0B" if fps > 12 else "#EF4444")
-        self.fps_indicator.setText(f"● FPS: {int(fps)}")
-        self.fps_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:11px;")
-
-    def update_eeg_hud(self, data):
-        sig = data.get("signal", 200)
-        color = "#10B981" if sig < 50 else ("#F59E0B" if sig < 200 else "#EF4444")
-        text = "FORTE" if sig < 50 else ("MÉDIO" if sig < 200 else "SEM SINAL")
-        self.eeg_indicator.setText(f"● EEG: {text}")
-        self.eeg_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:11px;")
 
 
 
