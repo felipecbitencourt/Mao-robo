@@ -53,8 +53,7 @@ class EEGInput(QThread):
                 if p.device != self.port:
                     if "bluetooth" in p.description.lower() or "brainlink" in p.description.lower():
                         ports_to_try.insert(0, p.device)
-                    else:
-                        ports_to_try.append(p.device)
+                    # Removido: fallback para TODAS as portas do sistema, que causava lentidão extrema
 
         for port in ports_to_try:
             try:
@@ -71,7 +70,7 @@ class EEGInput(QThread):
                     dados_recebidos = False
                     start_time = time.time()
                     
-                    while time.time() - start_time < 2.5:
+                    while time.time() - start_time < 1.5: # Reduzido de 2.5s para 1.5s
                         try:
                             if self.eeg.serial and self.eeg.serial.in_waiting > 0:
                                 dados_recebidos = True
