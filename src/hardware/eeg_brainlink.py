@@ -26,7 +26,7 @@ class BrainLinkData:
         self.low_gamma = 0
         self.high_gamma = 0
         self.raw = 0
-        self.battery = 0
+        self.battery = None
         self.heart_rate = 0
 
 class BrainLinkParser:
@@ -171,6 +171,15 @@ class BrainLinkParser:
                 self.data.high_beta = self._bytes_to_int(value_bytes[15:18])
                 self.data.low_gamma = self._bytes_to_int(value_bytes[18:21])
                 self.data.high_gamma = self._bytes_to_int(value_bytes[21:24])
+        
+        elif code == 0x11: # Alternativa para Bateria em alguns modelos
+            self.data.battery = value_bytes[0]
+        
+        else:
+            # Silencioso por padrão, descomente se precisar investigar novos sensores
+            # if code not in [0x02, 0x04, 0x05, 0x80]: 
+            #    print(f"DEBUG BRAINLINK: Código desconhecido recebido: 0x{code:02x}")
+            pass
     
     def _bytes_to_int(self, bytes_data: bytes) -> int:
         """Converte 3 bytes para inteiro (big-endian)"""

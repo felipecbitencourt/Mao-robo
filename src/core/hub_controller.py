@@ -15,6 +15,8 @@ class HubController(QObject):
     glove_signal = Signal(dict)   # Sinal para os dados de EEG (muda para EEG na verdade, mas o sinal é unificado)
     eeg_signal = Signal(dict)     # Sinal específico para telemetria EEG
     discovery_finished_signal = Signal(bool)
+    arduino_status_signal = Signal(bool)
+    fps_signal = Signal(float)
 
     def __init__(self):
         super().__init__()
@@ -64,6 +66,10 @@ class HubController(QObject):
         
         # Conexão status arduino
         self.arduino.status_signal.connect(self.status_signal.emit)
+        self.arduino.arduino_status_signal.connect(self.arduino_status_signal.emit)
+        
+        # Conexão FPS
+        self.processor.fps_signal.connect(self.fps_signal.emit)
 
     def set_hand_output(self, active):
         """Ativa ou desativa o envio de comandos para o Arduino"""

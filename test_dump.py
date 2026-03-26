@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import os
 from PySide6.QtCore import Qt, QTimer, Signal, QObject, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTextCursor
@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QFrame, QGraphicsDropShadowEffect,
     QLineEdit, QProgressBar, QSizePolicy, QRadioButton, QButtonGroup,
-    QComboBox, QStackedWidget, QDoubleSpinBox, QTextEdit
+    QComboBox, QStackedWidget, QDoubleSpinBox, QTextEdit, QGridLayout
 )
 
 from core.hub_controller import HubController
@@ -16,9 +16,9 @@ from ui.components.custom_buttons import ActionButton, AnimatedButton
 from ui.components.spectrogram_widget import SpectrogramWidget
 
 
-# ══════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Paletas
-# ══════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 DARK_THEME = {
     "bg":           "#0E0E14",
     "sidebar_bg":   "#14141E",
@@ -30,7 +30,7 @@ DARK_THEME = {
     "bar_bg":       "#2B2B3E",
     "input_bg":     "#1A1A26",
     "input_color":  "#F4F4FD",
-    "toggle_label": "☀️  Modo Claro",
+    "toggle_label": "â˜€ï¸  Modo Claro",
     "toggle_style": (
         "background-color:#2B2B3E; color:#A7A7C6; border:1px solid #3A3A52;"
         " border-radius:14px; padding:4px 14px; font-size:11px; font-weight:bold;"
@@ -48,7 +48,7 @@ LIGHT_THEME = {
     "bar_bg":       "#EBECF2",
     "input_bg":     "#FBFBFC",
     "input_color":  "#0A0A10",
-    "toggle_label": "🌙  Modo Escuro",
+    "toggle_label": "ðŸŒ™  Modo Escuro",
     "toggle_style": (
         "background-color:#FFFFFF; color:#3F3F56; border:1px solid #C8C8DC;"
         " border-radius:14px; padding:4px 14px; font-size:11px; font-weight:bold;"
@@ -56,9 +56,9 @@ LIGHT_THEME = {
 }
 
 
-# ══════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Helpers visuais
-# ══════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 def _section_label(text: str) -> QLabel:
     lbl = QLabel(text.upper())
     lbl.setObjectName("section_lbl")
@@ -91,14 +91,14 @@ def _card_wrap(inner_widget: QWidget, theme: dict) -> QFrame:
 
 
 def _panel_header(title: str, dot_color: str, theme: dict) -> QWidget:
-    """Faixa de cabeçalho para um painel/card."""
+    """Faixa de cabeÃ§alho para um painel/card."""
     bar = QWidget()
     bar.setFixedHeight(36)
     bar.setObjectName("panel_header")
     layout = QHBoxLayout(bar)
     layout.setContentsMargins(14, 0, 14, 0)
 
-    dot = QLabel("●")
+    dot = QLabel("â—")
     dot.setStyleSheet(f"color:{dot_color}; font-size:9px; margin-right:6px;")
     layout.addWidget(dot)
 
@@ -166,14 +166,14 @@ class StreamRedirector(QObject):
     def flush(self):
         self.stream.flush()
 
-# ══════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Janela principal
-# ══════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.hub = HubController()
-        self.setWindowTitle("Mão Robótica Pro")
+        self.setWindowTitle("MÃ£o RobÃ³tica Pro")
         self.resize(1140, 820)
         self._dark_mode = self.hub.config.get("theme_dark_mode", True)
 
@@ -183,7 +183,7 @@ class MainWindow(QMainWindow):
         self.hub.eeg_signal.connect(self.update_eeg_data)
         self.hub.discovery_finished_signal.connect(self._on_discovery_finished)
 
-        # Gamificação EEG (Desafio de 60s)
+        # GamificaÃ§Ã£o EEG (Desafio de 60s)
         self.eeg_test_active = False
         self.eeg_test_phase = 0
         self.eeg_test_seconds = 0
@@ -192,7 +192,7 @@ class MainWindow(QMainWindow):
         self.eeg_timer = QTimer(self)
         self.eeg_timer.timeout.connect(self._eeg_test_tick)
 
-        # Calibração Clínica (10 ciclos)
+        # CalibraÃ§Ã£o ClÃ­nica (10 ciclos)
         self.clin_cal_active = False
         self.clin_cal_cycle = 0
         self.clin_cal_phase = 0 # 0: Aguardando, 1: OPEN, 2: CLOSED
@@ -216,7 +216,7 @@ class MainWindow(QMainWindow):
             self.log_terminal.insertPlainText(text)
             self.log_terminal.moveCursor(QTextCursor.End)
 
-    # ── Tema ──────────────────────────────────────────────────── #
+    # â”€â”€ Tema â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #
     def _current_theme(self):
         return DARK_THEME if self._dark_mode else LIGHT_THEME
 
@@ -328,17 +328,17 @@ class MainWindow(QMainWindow):
             f"font-size:36px; font-weight:bold; color:{current_color};"
         )
 
-    # ── Calibração ────────────────────────────────────────────── #
-    # ── Calibração Clínica (10 Ciclos) ────────────────────────── #
+    # â”€â”€ CalibraÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #
+    # â”€â”€ CalibraÃ§Ã£o ClÃ­nica (10 Ciclos) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #
     def start_calibration_sequence(self):
-        """Inicia o protocolo clínico de 10 ciclos"""
+        """Inicia o protocolo clÃ­nico de 10 ciclos"""
         self.btn_calibrate_glove.setEnabled(False)
         self.clin_cal_active = True
         self.clin_cal_cycle = 1
         self.clin_cal_phase = 1 # Inicia com OPEN
         self.clin_cal_seconds = 5
         
-        self.hub.status_signal.emit("Iniciando Protocolo Clínico (10 Ciclos)...")
+        self.hub.status_signal.emit("Iniciando Protocolo ClÃ­nico (10 Ciclos)...")
         self._update_clin_cal_ui()
         self.clin_timer.start(1000)
 
@@ -348,13 +348,13 @@ class MainWindow(QMainWindow):
 
         self.clin_cal_seconds -= 1
         
-        # Notifica o Hub para começar/continuar capturando no estágio atual
-        if self.clin_cal_seconds == 4: # No primeiro segundo do tick (5->4), garante que o hub está pronto
+        # Notifica o Hub para comeÃ§ar/continuar capturando no estÃ¡gio atual
+        if self.clin_cal_seconds == 4: # No primeiro segundo do tick (5->4), garante que o hub estÃ¡ pronto
             stage = 'OPEN' if self.clin_cal_phase == 1 else 'CLOSED'
             self.hub.start_clinical_step(stage)
 
         if self.clin_cal_seconds <= 0:
-            # Finaliza o estágio atual no Hub
+            # Finaliza o estÃ¡gio atual no Hub
             self.hub.stop_clinical_step()
             
             if self.clin_cal_phase == 1:
@@ -374,7 +374,7 @@ class MainWindow(QMainWindow):
         self._update_clin_cal_ui()
 
     def _update_clin_cal_ui(self):
-        msg = "ABRA A MÃO COMPLETAMENTE" if self.clin_cal_phase == 1 else "FECHE A MÃO COMPLETAMENTE"
+        msg = "ABRA A MÃƒO COMPLETAMENTE" if self.clin_cal_phase == 1 else "FECHE A MÃƒO COMPLETAMENTE"
         color = "#10B981" if self.clin_cal_phase == 1 else "#EF4444"
         
         self.result_label.setText(f"C{self.clin_cal_cycle}/10: {msg} ({self.clin_cal_seconds}s)")
@@ -388,11 +388,11 @@ class MainWindow(QMainWindow):
         
         self.btn_calibrate_glove.setEnabled(True)
         if success:
-            self.result_label.setText("CALIBRAÇÃO CLÍNICA CONCLUÍDA")
+            self.result_label.setText("CALIBRAÃ‡ÃƒO CLÃNICA CONCLUÃDA")
             self.result_label.setStyleSheet("font-size:28px; color:#10B981; font-weight:bold;")
             self.hub.status_signal.emit("Protocolo finalizado com sucesso!")
         else:
-            self.result_label.setText("ERRO NA CALIBRAÇÃO")
+            self.result_label.setText("ERRO NA CALIBRAÃ‡ÃƒO")
             self.result_label.setStyleSheet("font-size:28px; color:#EF4444; font-weight:bold;")
 
         t = self._current_theme()
@@ -401,11 +401,11 @@ class MainWindow(QMainWindow):
         ))
 
     def closeEvent(self, event):
-        print("Fechando aplicação... parando threads.")
+        print("Fechando aplicaÃ§Ã£o... parando threads.")
         self.hub.stop()
         event.accept()
 
-    # ── Construção da UI ──────────────────────────────────────── #
+    # â”€â”€ ConstruÃ§Ã£o da UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #
     def _init_ui(self):
         t = self._current_theme()
 
@@ -428,8 +428,8 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ── SIDEBAR ──────────────────────────────────────────────
-        # ── SIDEBAR ──────────────────────────────────────────────
+        # â”€â”€ SIDEBAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        # â”€â”€ SIDEBAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         self.sidebar = QFrame()
         self.sidebar.setObjectName("sidebar")
         self.sidebar.setFixedWidth(268)
@@ -437,8 +437,8 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(12, 28, 12, 24)
         sidebar_layout.setSpacing(0)
         
-        # Botão de colapsar no topo
-        self.btn_toggle_sidebar = QPushButton(" ☰ ")
+        # BotÃ£o de colapsar no topo
+        self.btn_toggle_sidebar = QPushButton(" â˜° ")
         self.btn_toggle_sidebar.setCheckable(True)
         self.btn_toggle_sidebar.setCursor(Qt.PointingHandCursor)
         self.btn_toggle_sidebar.setFixedSize(48, 40)
@@ -469,25 +469,25 @@ class MainWindow(QMainWindow):
         brand_layout.addWidget(accent_bar)
         brand_layout.addSpacing(8)
 
-        self.title_lbl = QLabel("MÃO ROBÓTICA")
+        self.title_lbl = QLabel("MÃƒO ROBÃ“TICA")
         self.title_lbl.setObjectName("title_lbl")
         brand_layout.addWidget(self.title_lbl)
 
-        self.subtitle_lbl = QLabel("PRO HUB  ·  MULTIMODAL")
+        self.subtitle_lbl = QLabel("PRO HUB  Â·  MULTIMODAL")
         self.subtitle_lbl.setObjectName("subtitle_lbl")
         brand_layout.addWidget(self.subtitle_lbl)
 
         sidebar_layout.addWidget(self.brand_widget)
         sidebar_layout.addSpacing(24)
 
-        # Navegação via Abas Segmentadas
+        # NavegaÃ§Ã£o via Abas Segmentadas
         self.nav_container = QFrame()
         nav_layout = QHBoxLayout(self.nav_container)
         nav_layout.setContentsMargins(4, 4, 4, 4)
         nav_layout.setSpacing(4)
         
-        self.btn_nav_dash = QPushButton("📊 Dashboard")
-        self.btn_nav_settings = QPushButton("⚙️ Specs")
+        self.btn_nav_dash = QPushButton("ðŸ“Š Dashboard")
+        self.btn_nav_settings = QPushButton("âš™ï¸ Specs")
         self.btn_nav_dash.setCursor(Qt.PointingHandCursor)
         self.btn_nav_settings.setCursor(Qt.PointingHandCursor)
         self.btn_nav_dash.clicked.connect(lambda: self._switch_tab(0))
@@ -498,49 +498,55 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.nav_container)
         sidebar_layout.addSpacing(16)
         
-        self.lbl_inputs = _section_label("Inputs Disponíveis")
+        self.lbl_inputs = _section_label("Inputs DisponÃ­veis")
         sidebar_layout.addWidget(self.lbl_inputs)
 
-        self.btn_cam = AnimatedButton("🎥  CÂMERA", accent_color="#3B82F6")
+        self.btn_cam = AnimatedButton("ðŸŽ¥  CÃ‚MERA", accent_color="#3B82F6")
         self.btn_cam.setCheckable(True)
         self.btn_cam.toggled.connect(self._toggle_camera)
         sidebar_layout.addWidget(self.btn_cam)
         sidebar_layout.addSpacing(6)
 
-        self.btn_glove = AnimatedButton("🧤  LUVA 5DT", accent_color="#10B981")
+        self.btn_glove = AnimatedButton("ðŸ§¤  LUVA 5DT", accent_color="#10B981")
         self.btn_glove.setCheckable(True)
         self.btn_glove.toggled.connect(self._toggle_glove)
         sidebar_layout.addWidget(self.btn_glove)
         sidebar_layout.addSpacing(6)
 
-        self.btn_eeg = AnimatedButton("🧠  EEG BRAINLINK", accent_color="#F59E0B")
+        self.btn_eeg = AnimatedButton("ðŸ§   EEG BRAINLINK", accent_color="#F59E0B")
         self.btn_eeg.setCheckable(True)
         self.btn_eeg.toggled.connect(self._toggle_eeg)
         sidebar_layout.addWidget(self.btn_eeg)
+
+        sidebar_layout.addSpacing(6)
+        self.btn_manual = AnimatedButton("ðŸŽ®  CONTROLE MANUAL", accent_color="#8B5CF6")
+        self.btn_manual.setCheckable(True)
+        self.btn_manual.toggled.connect(self._toggle_manual)
+        sidebar_layout.addWidget(self.btn_manual)
         
         sidebar_layout.addSpacing(18)
         self.lbl_outputs = _section_label("Outputs Habilitados")
         sidebar_layout.addWidget(self.lbl_outputs)
 
-        self.btn_output_hand = AnimatedButton("🦾  MÃO ROBÓTICA: OFF", accent_color="#EF4444")
-        self.btn_output_hand.setCheckable(True)
-        self.btn_output_hand.toggled.connect(self._toggle_output_hand)
-        sidebar_layout.addWidget(self.btn_output_hand)
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
         sidebar_layout.addSpacing(6)
 
-        self.btn_output_csv = AnimatedButton("📊  REGISTRAR CSV", accent_color="#8B5CF6")
+        self.btn_output_csv = AnimatedButton("ðŸ“Š  REGISTRAR CSV", accent_color="#8B5CF6")
         self.btn_output_csv.setCheckable(True)
         self.btn_output_csv.toggled.connect(self._toggle_output_csv)
         sidebar_layout.addWidget(self.btn_output_csv)
         
         sidebar_layout.addStretch()
 
-        self.sidebar_footer = QLabel("Sistema v2.0  •  Multimodal")
+        self.sidebar_footer = QLabel("Sistema v2.0  â€¢  Multimodal")
         self.sidebar_footer.setObjectName("sidebar_footer")
         self.sidebar_footer.setAlignment(Qt.AlignCenter)
         sidebar_layout.addWidget(self.sidebar_footer)
 
-        # ── ÁREA CENTRAL (Gerenciador de Abas) ───────────────────
+        # â”€â”€ ÃREA CENTRAL (Gerenciador de Abas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         right_container = QWidget()
         right_layout = QVBoxLayout(right_container)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -549,7 +555,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget = QStackedWidget()
         right_layout.addWidget(self.stacked_widget)
 
-        # ════════════ TELA 0: DASHBOARD ════════════
+        # â•â•â•â•â•â•â•â•â•â•â•â• TELA 0: DASHBOARD â•â•â•â•â•â•â•â•â•â•â•â•
         self.page_dashboard = QFrame()
         self.page_dashboard.setObjectName("central_content")
         dash_layout = QVBoxLayout(self.page_dashboard)
@@ -569,13 +575,13 @@ class MainWindow(QMainWindow):
         hud_lyt.setContentsMargins(15, 5, 15, 5)
         hud_lyt.setSpacing(20)
 
-        self.arduino_indicator = QLabel("● ARDUINO: OFF")
+        self.arduino_indicator = QLabel("â— ARDUINO: OFF")
         self.arduino_indicator.setStyleSheet("color:#EF4444; font-weight:bold; font-size:11px;")
         
-        self.eeg_indicator = QLabel("● EEG: OFF")
+        self.eeg_indicator = QLabel("â— EEG: OFF")
         self.eeg_indicator.setStyleSheet("color:#EF4444; font-weight:bold; font-size:11px;")
 
-        self.fps_indicator = QLabel("● FPS: 0")
+        self.fps_indicator = QLabel("â— FPS: 0")
         self.fps_indicator.setStyleSheet("color:#7D7D9C; font-weight:bold; font-size:11px;")
 
         hud_lyt.addWidget(self.arduino_indicator)
@@ -597,16 +603,16 @@ class MainWindow(QMainWindow):
         self.dash_stack = QStackedWidget()
         dash_layout.addWidget(self.dash_stack)
 
-        # ── SUBTELA 0: IDLE ──
+        # â”€â”€ SUBTELA 0: IDLE â”€â”€
         self.dash_idle = QFrame()
         idle_layout = QVBoxLayout(self.dash_idle)
-        lbl_idle = QLabel("NENHUM INPUT SELECIONADO\n\nAtive a Câmera, Luva ou Tiara EEG na barra lateral.")
+        lbl_idle = QLabel("NENHUM INPUT SELECIONADO\n\nAtive a CÃ¢mera, Luva ou Tiara EEG na barra lateral.")
         lbl_idle.setObjectName("lbl_idle")
         lbl_idle.setAlignment(Qt.AlignCenter)
         idle_layout.addWidget(lbl_idle)
         self.dash_stack.addWidget(self.dash_idle)
 
-        # ── SUBTELA 1: CÂMERA ──
+        # â”€â”€ SUBTELA 1: CÃ‚MERA â”€â”€
         self.dash_cam = QFrame()
         cam_layout = QVBoxLayout(self.dash_cam)
         cam_layout.setContentsMargins(0, 0, 0, 0)
@@ -618,7 +624,7 @@ class MainWindow(QMainWindow):
         video_outer = QVBoxLayout(self.video_container)
         video_outer.setContentsMargins(0, 0, 0, 0)
         video_outer.setSpacing(0)
-        video_outer.addWidget(_panel_header("Câmera Inteligente (MediaPipe)", "#3B82F6", t))
+        video_outer.addWidget(_panel_header("CÃ¢mera Inteligente (MediaPipe)", "#3B82F6", t))
 
         self.video_display = VideoDisplay()
         self.hub.frame_signal.connect(self.video_display.update_frame)
@@ -644,16 +650,16 @@ class MainWindow(QMainWindow):
         self.result_label = QLabel("AGUARDANDO GESTO")
         self.result_label.setStyleSheet(f"font-size:36px; font-weight:bold; color:{t['text_bright']};")
         text_col.addWidget(self.result_label)
-        self.source_label = QLabel("Fonte: —")
+        self.source_label = QLabel("Fonte: â€”")
         self.source_label.setStyleSheet("color:#E94560; font-weight:bold; font-size:12px; letter-spacing:1px;")
         text_col.addWidget(self.source_label)
         text_col.addSpacing(16)
         
-        text_col.addWidget(_section_label("Visão Fluída de Mão (MediaPipe)"))
+        text_col.addWidget(_section_label("VisÃ£o FluÃ­da de MÃ£o (MediaPipe)"))
         cam_tel_layout = QVBoxLayout()
         cam_tel_layout.setSpacing(6)
         self.cam_bars = []
-        for fname in ["Polegar", "Indicador", "Médio", "Anelar", "Mínimo"]:
+        for fname in ["Polegar", "Indicador", "MÃ©dio", "Anelar", "MÃ­nimo"]:
             row = QHBoxLayout()
             row.setSpacing(10)
             lbl = QLabel(fname)
@@ -675,7 +681,7 @@ class MainWindow(QMainWindow):
 
         self.dash_stack.addWidget(self.dash_cam)
 
-        # ── SUBTELA 2: LUVA SENSORIAL ──
+        # â”€â”€ SUBTELA 2: LUVA SENSORIAL â”€â”€
         self.dash_glove = QFrame()
         glove_layout = QHBoxLayout(self.dash_glove)
         glove_layout.setContentsMargins(0, 0, 0, 0)
@@ -686,7 +692,7 @@ class MainWindow(QMainWindow):
         g_outer = QVBoxLayout(self.glove_panel)
         g_outer.setContentsMargins(0, 0, 0, 0)
         g_outer.setSpacing(0)
-        g_outer.addWidget(_panel_header("Telemetria da Luva Óptica (5DT)", "#10B981", t))
+        g_outer.addWidget(_panel_header("Telemetria da Luva Ã“ptica (5DT)", "#10B981", t))
 
         self.glove_telemetry = QFrame()
         glove_tel_layout = QVBoxLayout(self.glove_telemetry)
@@ -695,7 +701,7 @@ class MainWindow(QMainWindow):
 
         self.glove_bars = []
         self.glove_raw_labels = []
-        for i, fname in enumerate(["Polegar", "Indicador", "Médio", "Anelar", "Mínimo"]):
+        for i, fname in enumerate(["Polegar", "Indicador", "MÃ©dio", "Anelar", "MÃ­nimo"]):
             row = QHBoxLayout()
             row.setSpacing(15)
             lbl = QLabel(fname)
@@ -732,13 +738,13 @@ class MainWindow(QMainWindow):
         g_outer.addStretch()
         glove_layout.addWidget(self.glove_panel, 2)
 
-        # Novo Painel Direito: Diagnóstico da Luva
+        # Novo Painel Direito: DiagnÃ³stico da Luva
         self.glove_diag = QFrame()
         self.glove_diag.setObjectName("datapanel")
         gd_outer = QVBoxLayout(self.glove_diag)
         gd_outer.setContentsMargins(0, 0, 0, 0)
         gd_outer.setSpacing(0)
-        gd_outer.addWidget(_panel_header("Predição (I.A. Vetorial)", "#8B5CF6", t))
+        gd_outer.addWidget(_panel_header("PrediÃ§Ã£o (I.A. Vetorial)", "#8B5CF6", t))
         
         gd_inner = QVBoxLayout()
         gd_inner.setContentsMargins(16, 14, 16, 14)
@@ -754,7 +760,7 @@ class MainWindow(QMainWindow):
         
         gd_inner.addStretch()
         has_calib = len(self.hub.calibrated_vectors) > 0
-        self.glove_calib_lbl = QLabel("Calibração carregada do disco." if has_calib else "Requer Calibração Inicial")
+        self.glove_calib_lbl = QLabel("CalibraÃ§Ã£o carregada do disco." if has_calib else "Requer CalibraÃ§Ã£o Inicial")
         color_calib = "#10B981" if has_calib else "#EF4444"
         self.glove_calib_lbl.setStyleSheet(f"font-size:10px; color:{color_calib}; font-weight:bold; font-family:'Consolas', monospace;")
         self.glove_calib_lbl.setAlignment(Qt.AlignCenter)
@@ -765,7 +771,7 @@ class MainWindow(QMainWindow):
 
         self.dash_stack.addWidget(self.dash_glove)
 
-        # ── SUBTELA 3: EEG BRAINLINK ──
+        # â”€â”€ SUBTELA 3: EEG BRAINLINK â”€â”€
         self.dash_eeg = QFrame()
         eeg_layout = QVBoxLayout(self.dash_eeg)
         eeg_layout.setContentsMargins(0, 0, 0, 0)
@@ -787,7 +793,7 @@ class MainWindow(QMainWindow):
         header_lyt = QHBoxLayout(header_bar)
         header_lyt.setContentsMargins(14, 0, 14, 0)
         
-        dot = QLabel("●")
+        dot = QLabel("â—")
         dot.setStyleSheet("color:#3B82F6; font-size:9px; margin-right:6px;")
         header_lyt.addWidget(dot)
         lbl_title = QLabel("ELETROENCEFALOGRAMA VIVO")
@@ -813,23 +819,23 @@ class MainWindow(QMainWindow):
 
         gp_outer.addWidget(header_bar)
 
-        # Stacked Widget para as duas visualizações
+        # Stacked Widget para as duas visualizaÃ§Ãµes
         self.eeg_wave_stack = QStackedWidget()
 
-        # === PÁGINA 0: NeuroSky (Atenção + Meditação) ===
+        # === PÃGINA 0: NeuroSky (AtenÃ§Ã£o + MeditaÃ§Ã£o) ===
         page_neurosky = QWidget()
         ns_lyt = QVBoxLayout(page_neurosky)
         ns_lyt.setContentsMargins(25, 25, 25, 25)
         ns_lyt.setSpacing(15)
 
-        lbl_att_g = QLabel("Onda de Foco (Atenção)")
+        lbl_att_g = QLabel("Onda de Foco (AtenÃ§Ã£o)")
         lbl_att_g.setStyleSheet("color:#EF4444; font-weight:bold; font-size:12px; letter-spacing:1px;")
         self.attn_plot = WavePlotWidget("#EF4444")
         ns_lyt.addWidget(lbl_att_g)
         ns_lyt.addWidget(self.attn_plot)
         ns_lyt.addSpacing(10)
 
-        lbl_med_g = QLabel("Onda de Relaxamento (Meditação)")
+        lbl_med_g = QLabel("Onda de Relaxamento (MeditaÃ§Ã£o)")
         lbl_med_g.setStyleSheet("color:#3B82F6; font-weight:bold; font-size:12px; letter-spacing:1px;")
         self.med_plot = WavePlotWidget("#3B82F6")
         ns_lyt.addWidget(lbl_med_g)
@@ -837,7 +843,7 @@ class MainWindow(QMainWindow):
 
         self.eeg_wave_stack.addWidget(page_neurosky)
 
-        # === PÁGINA 1: Custom Metrics (4 ondas) ===
+        # === PÃGINA 1: Custom Metrics (4 ondas) ===
         page_custom = QWidget()
         cm_lyt = QVBoxLayout(page_custom)
         cm_lyt.setContentsMargins(25, 15, 25, 15)
@@ -846,7 +852,7 @@ class MainWindow(QMainWindow):
         custom_wave_defs = [
             ("Foco Real (Beta/Alpha)", "#EF4444", "foco_real"),
             ("Relaxamento Real (Alpha/Beta)", "#3B82F6", "relaxamento_real"),
-            ("Sonolência (Theta/Alpha)", "#8B5CF6", "sonolencia"),
+            ("SonolÃªncia (Theta/Alpha)", "#8B5CF6", "sonolencia"),
             ("Engajamento (Beta/(Alpha+Theta))", "#F59E0B", "engajamento"),
         ]
         self.custom_plots = {}
@@ -861,7 +867,7 @@ class MainWindow(QMainWindow):
 
         self.eeg_wave_stack.addWidget(page_custom)
 
-        # === PÁGINA 2: Espectrograma Heatmap ===
+        # === PÃGINA 2: Espectrograma Heatmap ===
         page_spectro = QWidget()
         spectro_lyt = QVBoxLayout(page_spectro)
         spectro_lyt.setContentsMargins(15, 10, 15, 10)
@@ -894,14 +900,14 @@ class MainWindow(QMainWindow):
 
         cp_inner.addWidget(self.eeg_card_sig)
 
-        mode_lbl = QLabel("MODO DE ATUAÇÃO:")
+        mode_lbl = QLabel("MODO DE ATUAÃ‡ÃƒO:")
         mode_lbl.setObjectName("app_title")
         cp_inner.addWidget(mode_lbl)
 
         self.mode_group = QButtonGroup(self.dash_eeg)
         self.rb_none = QRadioButton("Mudo (Leitura Pura)")
         self.rb_attn = QRadioButton("Foco Concentrado (>60)")
-        self.rb_med = QRadioButton("Transe/Meditação (>60)")
+        self.rb_med = QRadioButton("Transe/MeditaÃ§Ã£o (>60)")
         self.rb_custom_focus = QRadioButton("Foco Real (Proporcional)")
         for rb in [self.rb_none, self.rb_attn, self.rb_med, self.rb_custom_focus]:
             self.mode_group.addButton(rb)
@@ -936,7 +942,7 @@ class MainWindow(QMainWindow):
         gain_row.addStretch()
         cp_inner.addLayout(gain_row)
 
-        # Suavização EMA
+        # SuavizaÃ§Ã£o EMA
         smooth_row = QHBoxLayout()
         smooth_row.setSpacing(8)
         self.eeg_smooth_spin = QDoubleSpinBox()
@@ -945,7 +951,7 @@ class MainWindow(QMainWindow):
         self.eeg_smooth_spin.setDecimals(2)
         self.eeg_smooth_spin.setValue(self.hub.eeg_smoothing)
         self.eeg_smooth_spin.valueChanged.connect(self._set_eeg_smoothing)
-        smooth_desc = QLabel("Suavização (0=bruto, 0.95=liso)")
+        smooth_desc = QLabel("SuavizaÃ§Ã£o (0=bruto, 0.95=liso)")
         smooth_desc.setObjectName("dim_label")
         smooth_row.addWidget(self.eeg_smooth_spin)
         smooth_row.addWidget(smooth_desc)
@@ -953,7 +959,7 @@ class MainWindow(QMainWindow):
         cp_inner.addLayout(smooth_row)
 
         cp_inner.addSpacing(15)
-        self.btn_test_eeg = QPushButton("🎯 INICIAR DESAFIO (60s)")
+        self.btn_test_eeg = QPushButton("ðŸŽ¯ INICIAR DESAFIO (60s)")
         self.btn_test_eeg.setCursor(Qt.PointingHandCursor)
         self.btn_test_eeg.setStyleSheet("background-color:#8B5CF6; color:#FFFFFF; border:none; border-radius:6px; padding:12px; font-weight:bold; font-size:12px;")
         self.btn_test_eeg.clicked.connect(self.start_eeg_test)
@@ -995,7 +1001,7 @@ class MainWindow(QMainWindow):
         cp_inner.addLayout(med_row)
 
         cp_inner.addSpacing(10)
-        custom_lbl = QLabel("MÉTRICAS CUSTOMIZADAS:")
+        custom_lbl = QLabel("MÃ‰TRICAS CUSTOMIZADAS:")
         custom_lbl.setObjectName("app_title")
         cp_inner.addWidget(custom_lbl)
 
@@ -1034,10 +1040,63 @@ class MainWindow(QMainWindow):
         eeg_layout.addLayout(eeg_split)
         self.dash_stack.addWidget(self.dash_eeg)
 
+        # â”€â”€ SUBTELA 4: CONTROLE MANUAL â”€â”€
+        self.dash_manual = QFrame()
+        manual_lyt = QVBoxLayout(self.dash_manual)
+        manual_lyt.setContentsMargins(30, 20, 30, 20)
+        
+        manual_header = QVBoxLayout()
+        manual_title = QLabel("BIBLIOTECA DE GESTOS")
+        manual_title.setStyleSheet("font-size:24px; font-weight:bold; color:#8B5CF6;")
+        manual_subtitle = QLabel("Acionamento direto dos servos para posiÃ§Ãµes prÃ©-programadas")
+        manual_subtitle.setStyleSheet("color:#7D7D9C; font-size:12px; margin-bottom:15px;")
+        manual_header.addWidget(manual_title)
+        manual_header.addWidget(manual_subtitle)
+        manual_lyt.addLayout(manual_header)
+        
+        # Grid de Gestos
+        gesture_grid = QGridLayout()
+        gesture_grid.setSpacing(20)
+        
+        gestures_ui = [
+            ("ABRIR TUDO", "ðŸ–", "#3B82F6"),
+            ("FECHAR TUDO", "âœŠ", "#EF4444"),
+            ("JOIA (UP)", "ðŸ‘", "#10B981"),
+            ("PAZ E AMOR", "âœŒï¸", "#F59E0B"),
+            ("APONTAR", "â˜ï¸", "#3B82F6"),
+            ("PINÃ‡A (PREC.)", "ðŸ¤", "#8B5CF6"),
+            ("OK (PINÃ‡A)", "ðŸ‘Œ", "#10B981"),
+            ("VULCANO", "ðŸ––", "#F59E0B"),
+        ]
+        
+        for i, (name, emoji, color) in enumerate(gestures_ui):
+            btn = QPushButton(f"{emoji}\n{name}")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedSize(160, 100)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: #1E1E2E; color: #FFFFFF;
+                    border: 2px solid #2B2B3E; border-radius: 12px;
+                    font-size: 14px; font-weight: bold; padding: 10px;
+                }}
+                QPushButton:hover {{
+                    background-color: {color}22; border-color: {color};
+                }}
+                QPushButton:pressed {{
+                    background-color: {color};
+                }}
+            """)
+            btn.clicked.connect(lambda checked=False, n=name: self.hub.send_manual_gesture(n))
+            gesture_grid.addWidget(btn, i // 4, i % 4)
+            
+        manual_lyt.addLayout(gesture_grid)
+        manual_lyt.addStretch()
+        self.dash_stack.addWidget(self.dash_manual)
+
         self.stacked_widget.addWidget(self.page_dashboard)
 
 
-        # ════════════ TELA 1: CONFIGURAÇÕES E HARDWARE ════════════
+        # â•â•â•â•â•â•â•â•â•â•â•â• TELA 1: CONFIGURAÃ‡Ã•ES E HARDWARE â•â•â•â•â•â•â•â•â•â•â•â•
         self.page_settings = QFrame()
         self.page_settings.setObjectName("central_content")
         sett_layout = QHBoxLayout(self.page_settings)
@@ -1063,8 +1122,8 @@ class MainWindow(QMainWindow):
         left_panel.addLayout(sett_header)
         left_panel.addWidget(_h_divider("#1E1E34"))
 
-        # Conexão Arduino
-        left_panel.addWidget(_section_label("Conexão Robótica (Arduino)"))
+        # ConexÃ£o Arduino
+        left_panel.addWidget(_section_label("ConexÃ£o RobÃ³tica (Arduino)"))
         port_row = QHBoxLayout()
         self.port_combo = QComboBox()
         self.port_combo.setFixedHeight(36)
@@ -1089,28 +1148,28 @@ class MainWindow(QMainWindow):
         port_row.addWidget(QLabel("PORTA EEG:"))
         port_row.addWidget(self.eeg_port_combo)
         
-        self.btn_auto_ports = ActionButton("🔍 DETECTAR", color="#8B5CF6")
-        self.btn_auto_ports.setFixedHeight(36) # Forçando a altura para bater com a combobox
+        self.btn_auto_ports = ActionButton("ðŸ” DETECTAR", color="#8B5CF6")
+        self.btn_auto_ports.setFixedHeight(36) # ForÃ§ando a altura para bater com a combobox
         self.btn_auto_ports.clicked.connect(self._on_auto_detect_clicked)
         port_row.addWidget(self.btn_auto_ports)
         port_row.addStretch()
         left_panel.addLayout(port_row)
 
-        self.btn_test_hand = ActionButton("⚙️ TESTAR CONEXÃO", color="#3B82F6")
+        self.btn_test_hand = ActionButton("âš™ï¸ TESTAR CONEXÃƒO", color="#3B82F6")
         self.btn_test_hand.clicked.connect(self.hub.test_arduino_hand)
         left_panel.addWidget(self.btn_test_hand, alignment=Qt.AlignLeft)
         left_panel.addSpacing(16)
 
-        # Calibração
-        left_panel.addWidget(_section_label("Sensores Físicos"))
-        self.btn_calibrate_glove = ActionButton("🖐 REFAZER CALIBRAÇÃO DA LUVA", color="#10B981")
+        # CalibraÃ§Ã£o
+        left_panel.addWidget(_section_label("Sensores FÃ­sicos"))
+        self.btn_calibrate_glove = ActionButton("ðŸ– REFAZER CALIBRAÃ‡ÃƒO DA LUVA", color="#10B981")
         self.btn_calibrate_glove.clicked.connect(self.start_calibration_sequence)
         left_panel.addWidget(self.btn_calibrate_glove, alignment=Qt.AlignLeft)
         left_panel.addSpacing(16)
 
-        # Emergência
+        # EmergÃªncia
         left_panel.addWidget(_section_label("Zona de Perigo"))
-        self.btn_stop = ActionButton("🛑 CORTE DE EMERGÊNCIA DOS MOTORES", color="#EF4444")
+        self.btn_stop = ActionButton("ðŸ›‘ CORTE DE EMERGÃŠNCIA DOS MOTORES", color="#EF4444")
         self.btn_stop.clicked.connect(self.hub.stop)
         left_panel.addWidget(self.btn_stop, alignment=Qt.AlignLeft)
         
@@ -1140,8 +1199,8 @@ class MainWindow(QMainWindow):
 
         self.stacked_widget.addWidget(self.page_settings)
 
-        # ── BARRA DE STATUS ───────────────────────────────────────
-        self.status_bar_label = QLabel("● SISTEMA INICIADO")
+        # â”€â”€ BARRA DE STATUS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        self.status_bar_label = QLabel("â— SISTEMA INICIADO")
         self.status_bar_label.setObjectName("status_bar")
         right_layout.addWidget(self.status_bar_label)
 
@@ -1150,7 +1209,7 @@ class MainWindow(QMainWindow):
 
         self._switch_tab(0)
 
-    # ── Callbacks ─────────────────────────────────────────────── #
+    # â”€â”€ Callbacks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ #
     def _refresh_ports_combo(self):
         self.port_combo.blockSignals(True)
         self.eeg_port_combo.blockSignals(True)
@@ -1190,13 +1249,13 @@ class MainWindow(QMainWindow):
             self.hub.arduino.port = self.port_combo.currentData()
 
     def _on_auto_detect_clicked(self):
-        self.status_bar_label.setText("● BUSCANDO HARDWARE...")
+        self.status_bar_label.setText("â— BUSCANDO HARDWARE...")
         self.hub.auto_detect_all_ports()
 
     def _on_discovery_finished(self, success):
         self._refresh_ports_combo()
         msg = "Dispositivos Encontrados" if success else "Nenhum dispositivo encontrado"
-        self.status_bar_label.setText(f"● {msg.upper()}")
+        self.status_bar_label.setText(f"â— {msg.upper()}")
         self._refresh_ports_combo()
 
     def _update_arduino_port(self, text):
@@ -1215,35 +1274,36 @@ class MainWindow(QMainWindow):
 
     def _toggle_output_hand(self, checked):
         if checked:
-            self.btn_output_hand.setText("🦾  MÃO ROBÓTICA: ON")
-            self.btn_output_hand._accent_color = "#10B981"
-            self.btn_output_hand._update_style(checked=True)
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
             self.hub.set_hand_output(True)
         else:
-            self.btn_output_hand.setText("🦾  MÃO ROBÓTICA: OFF")
-            self.btn_output_hand._accent_color = "#EF4444"
-            self.btn_output_hand._update_style(checked=False)
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
             self.hub.set_hand_output(False)
 
     def _toggle_output_csv(self, checked):
         if checked:
-            self.btn_output_csv.setText("📊  GRAVANDO CSV")
+            self.btn_output_csv.setText("ðŸ“Š  GRAVANDO CSV")
             self.btn_output_csv._accent_color = "#10B981"
             self.btn_output_csv._update_style(checked=True)
-            self.hub.status_signal.emit("Gravação CSV Iniciada (Simulado)")
+            self.hub.status_signal.emit("GravaÃ§Ã£o CSV Iniciada (Simulado)")
         else:
-            self.btn_output_csv.setText("📊  REGISTRAR CSV")
+            self.btn_output_csv.setText("ðŸ“Š  REGISTRAR CSV")
             self.btn_output_csv._accent_color = "#8B5CF6"
             self.btn_output_csv._update_style(checked=False)
-            self.hub.status_signal.emit("Gravação CSV Parada")
+            self.hub.status_signal.emit("GravaÃ§Ã£o CSV Parada")
 
     def _toggle_camera(self, checked):
         if checked:
             self.btn_glove.setChecked(False)
             self.btn_eeg.setChecked(False)
+            self.btn_manual.setChecked(False)
             self.dash_stack.setCurrentIndex(1)
         else:
-            if not (self.btn_glove.isChecked() or self.btn_eeg.isChecked()):
+            if not (self.btn_glove.isChecked() or self.btn_eeg.isChecked() or self.btn_manual.isChecked()):
                 self.dash_stack.setCurrentIndex(0)
         self.btn_cam._update_style(checked)
         self.hub.set_camera_active(checked)
@@ -1252,9 +1312,10 @@ class MainWindow(QMainWindow):
         if checked:
             self.btn_cam.setChecked(False)
             self.btn_eeg.setChecked(False)
+            self.btn_manual.setChecked(False)
             self.dash_stack.setCurrentIndex(2)
         else:
-            if not (self.btn_cam.isChecked() or self.btn_eeg.isChecked()):
+            if not (self.btn_cam.isChecked() or self.btn_eeg.isChecked() or self.btn_manual.isChecked()):
                 self.dash_stack.setCurrentIndex(0)
         self.btn_glove._update_style(checked)
         self.hub.set_glove_active(checked)
@@ -1263,12 +1324,25 @@ class MainWindow(QMainWindow):
         if checked:
             self.btn_cam.setChecked(False)
             self.btn_glove.setChecked(False)
+            self.btn_manual.setChecked(False)
             self.dash_stack.setCurrentIndex(3)
         else:
-            if not (self.btn_cam.isChecked() or self.btn_glove.isChecked()):
+            if not (self.btn_cam.isChecked() or self.btn_glove.isChecked() or self.btn_manual.isChecked()):
                 self.dash_stack.setCurrentIndex(0)
         self.btn_eeg._update_style(checked)
         self.hub.set_eeg_active(checked)
+
+    def _toggle_manual(self, checked):
+        if checked:
+            self.btn_cam.setChecked(False)
+            self.btn_glove.setChecked(False)
+            self.btn_eeg.setChecked(False)
+            self.dash_stack.setCurrentIndex(4)
+        else:
+            if not (self.btn_cam.isChecked() or self.btn_glove.isChecked() or self.btn_eeg.isChecked()):
+                self.dash_stack.setCurrentIndex(0)
+        self.btn_manual._update_style(checked)
+        self.hub.status_signal.emit("Modo Manual ATIVADO" if checked else "Modo Manual DESATIVADO")
 
     def _set_eeg_mode(self, mode):
         self.hub.eeg_control_mode = mode
@@ -1290,7 +1364,7 @@ class MainWindow(QMainWindow):
         self.btn_view_spectro.setStyleSheet(valido if idx == 2 else invalido)
 
     def update_status_bar(self, message):
-        self.status_bar_label.setText(f"● {message.upper()}")
+        self.status_bar_label.setText(f"â— {message.upper()}")
 
     def update_glove_data(self, data):
         sensors = data.get("sensors", [])
@@ -1300,7 +1374,7 @@ class MainWindow(QMainWindow):
             if i < len(self.glove_bars):
                 self.glove_bars[i].setValue(int(val * 100))
                 
-                # Se tivermos threshold clínico, mostra no label
+                # Se tivermos threshold clÃ­nico, mostra no label
                 if len(thresholds) > i:
                     t_val = thresholds[i]
                     self.glove_raw_labels[i].setText(f"{val:.2f} (T:{t_val:.2f})")
@@ -1319,7 +1393,7 @@ class MainWindow(QMainWindow):
         print(f"*** UI RECEIVE: {pred} FROM {source} ***")
 
         self.result_label.setText(pred)
-        self.source_label.setText(f"FONTE: {source}  ·  {conf}%")
+        self.source_label.setText(f"FONTE: {source}  Â·  {conf}%")
         self.gesture_display.update_gesture(gid)
 
         color = "#10B981" if conf > 85 else t['text_bright']
@@ -1364,10 +1438,10 @@ class MainWindow(QMainWindow):
             else:
                 self.eeg_timer.stop()
                 self.eeg_test_active = False
-                self.eeg_test_lbl.setText(f"🏆 Foco: {self.max_focus}%  |  Relaxe: {self.max_meditation}%")
+                self.eeg_test_lbl.setText(f"ðŸ† Foco: {self.max_focus}%  |  Relaxe: {self.max_meditation}%")
                 self.eeg_test_lbl.setStyleSheet("color:#10B981; font-size:13px; font-weight:bold;")
                 self.btn_test_eeg.setEnabled(True)
-                self.btn_test_eeg.setText("🔄 REINICIAR DESAFIO")
+                self.btn_test_eeg.setText("ðŸ”„ REINICIAR DESAFIO")
                 self.btn_test_eeg.setStyleSheet("background-color:#8B5CF6; color:#FFFFFF; border-radius:6px; padding:12px; font-weight:bold; font-size:12px;")
         else:
             if self.eeg_test_phase == 1:
@@ -1376,7 +1450,7 @@ class MainWindow(QMainWindow):
                 self.eeg_test_lbl.setText(f"FASE 2: RELAXE PROFUNDAMENTE! ({self.eeg_test_seconds}s)")
 
     def update_eeg_data(self, data):
-        # Proteção contra chamadas antes da UI estar pronta
+        # ProteÃ§Ã£o contra chamadas antes da UI estar pronta
         if not hasattr(self, 'attn_bar') or not hasattr(self, 'custom_metric_bars'):
             return
 
@@ -1384,11 +1458,11 @@ class MainWindow(QMainWindow):
         med = data.get("meditation", 0)
         sig = data.get("signal", 200)
 
-        # Log diagnóstico refinado (apenas quando há sinal)
+        # Log diagnÃ³stico refinado (apenas quando hÃ¡ sinal)
         if sig < 200:
              print(f"DEBUG UI EEG: Data flow active -> Att:{att} Med:{med} Sig:{sig}")
 
-        # Gamificação State Machine Hook
+        # GamificaÃ§Ã£o State Machine Hook
         if getattr(self, "eeg_test_active", False):
             if self.eeg_test_phase == 1 and att > self.max_focus:
                 self.max_focus = att
@@ -1421,7 +1495,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'spectro_plot'):
             self.spectro_plot.add_data(waves)
 
-        status_text = "CONEXÃO LIMPA" if sig < 50 else ("FALHANDO" if sig < 200 else "DISPOSITIVO OFF")
+        status_text = "CONEXÃƒO LIMPA" if sig < 50 else ("FALHANDO" if sig < 200 else "DISPOSITIVO OFF")
         self.eeg_label.setText(f"SINAL {sig:3d}\n{status_text}")
 
         color = "#10B981" if sig < 50 else ("#F59E0B" if sig < 200 else "#EF4444")
@@ -1432,18 +1506,18 @@ class MainWindow(QMainWindow):
     def update_arduino_hud(self, connected):
         color = "#10B981" if connected else "#EF4444"
         self.arduino_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:11px;")
-        self.arduino_indicator.setText(f"● ARDUINO: {'OK' if connected else 'OFF'}")
+        self.arduino_indicator.setText(f"â— ARDUINO: {'OK' if connected else 'OFF'}")
 
     def update_fps_hud(self, fps):
         color = "#10B981" if fps > 22 else ("#F59E0B" if fps > 12 else "#EF4444")
-        self.fps_indicator.setText(f"● FPS: {int(fps)}")
+        self.fps_indicator.setText(f"â— FPS: {int(fps)}")
         self.fps_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:11px;")
 
     def update_eeg_hud(self, data):
         sig = data.get("signal", 200)
         color = "#10B981" if sig < 50 else ("#F59E0B" if sig < 200 else "#EF4444")
-        text = "FORTE" if sig < 50 else ("MÉDIO" if sig < 200 else "SEM SINAL")
-        self.eeg_indicator.setText(f"● EEG: {text}")
+        text = "FORTE" if sig < 50 else ("MÃ‰DIO" if sig < 200 else "SEM SINAL")
+        self.eeg_indicator.setText(f"â— EEG: {text}")
         self.eeg_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:11px;")
 
 
@@ -1451,11 +1525,11 @@ class MainWindow(QMainWindow):
 
     def toggle_sidebar(self):
         width = self.sidebar.width()
-        is_collapsed = width < 100 # Se for menor que 100, está colapsado agora
+        is_collapsed = width < 100 # Se for menor que 100, estÃ¡ colapsado agora
         
         new_width = 268 if is_collapsed else 72
         
-        # Animação de suavidade
+        # AnimaÃ§Ã£o de suavidade
         self.animation = QPropertyAnimation(self.sidebar, b"minimumWidth")
         self.animation.setDuration(250)
         self.animation.setStartValue(width)
@@ -1472,7 +1546,7 @@ class MainWindow(QMainWindow):
         self.animation2.start()
         
         # Esconder/Mostrar elementos baseado na largura final
-        target_visible = is_collapsed # Se vai expandir (new=268), fica visível
+        target_visible = is_collapsed # Se vai expandir (new=268), fica visÃ­vel
         
         # Lista de widgets/layouts que devem sumir no modo mini
         labels_to_hide = [
@@ -1483,14 +1557,14 @@ class MainWindow(QMainWindow):
             if hasattr(item, "setVisible"):
                 item.setVisible(target_visible)
         
-        # Ajusta os botões de input para sumir o texto e ficar só ícone
-        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_output_hand, self.btn_output_csv]
+        # Ajusta os botÃµes de input para sumir o texto e ficar sÃ³ Ã­cone
+        inputs = [self.btn_cam, self.btn_glove, self.btn_eeg, self.btn_manual, self.btn_output_hand, self.btn_output_csv]
         for btn in inputs:
             orig_text = btn.text()
             if not is_collapsed: # Vai colapsar
                 if "  " in orig_text:
                     btn._full_text = orig_text
-                    btn.setText(orig_text.split("  ")[0]) # Deixa só o ícone (ex: 🎥)
+                    btn.setText(orig_text.split("  ")[0]) # Deixa sÃ³ o Ã­cone (ex: ðŸŽ¥)
             else: # Vai expandir
                 if hasattr(btn, "_full_text"):
                     btn.setText(btn._full_text)

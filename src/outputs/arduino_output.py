@@ -42,6 +42,7 @@ class TestThread(QThread):
 
 class ArduinoOutput(QObject):
     status_signal = Signal(str)
+    arduino_status_signal = Signal(bool)
 
     def __init__(self, port='COM5'):
         super().__init__()
@@ -86,6 +87,7 @@ class ArduinoOutput(QObject):
                 # Tenta um comando simples para ver se ainda está vivo
                 self.board.iterate()
                 print("DEBUG ARDUINO: Já conectado e operacional.")
+                self.arduino_status_signal.emit(True)
                 return True
             except:
                 print("DEBUG ARDUINO: Conexão antiga perdida. Reconectando...")

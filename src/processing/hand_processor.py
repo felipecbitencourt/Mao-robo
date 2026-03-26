@@ -11,12 +11,15 @@ from core.paths import resource_path
 class HandProcessor(QThread):
     prediction_signal = Signal(dict)
     processed_frame_signal = Signal(object) # Envia frame com os pontos desenhados
+    fps_signal = Signal(float)
 
     def __init__(self, model_path="models/hand_landmarker.task"):
         super().__init__()
         self.frame_queue = queue.Queue(maxsize=1)
         self.running = False
         self.model_path = resource_path(model_path)
+        self._fps_buffer = [] # Buffer para cálculo de FPS
+        self._last_fps_emit = 0
         
         # Configuração MediaPipe Tasks (Idêntico ao main_fluido_v2.py)
         self.BaseOptions = mp.tasks.BaseOptions
@@ -81,6 +84,18 @@ class HandProcessor(QThread):
         timestamp_ms = int(time.time() * 1000)
         
         result = self.detector.detect_for_video(mp_image, timestamp_ms)
+        
+        # Cálculo de FPS
+        now = time.time()
+        self._fps_buffer.append(now)
+        if len(self._fps_buffer) > 10:
+            self._fps_buffer.pop(0)
+            
+        if now - self._last_fps_emit > 0.5: # Emitir a cada 500ms
+            if len(self._fps_buffer) > 1:
+                fps = (len(self._fps_buffer) - 1) / (self._fps_buffer[-1] - self._fps_buffer[0])
+                self.fps_signal.emit(fps)
+                self._last_fps_emit = now
         
         gesture_id = 0
         confidence = 0
