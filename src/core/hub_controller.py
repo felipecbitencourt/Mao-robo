@@ -1,5 +1,6 @@
 import time
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QThread
+import os
 from inputs.camera_input import CameraInput
 from inputs.glove_input import GloveInput
 from inputs.eeg_input import EEGInput
@@ -11,8 +12,9 @@ class HubController(QObject):
     prediction_signal = Signal(dict)
     status_signal = Signal(str)
     frame_signal = Signal(object)  # Sinal para o frame da câmera
-    glove_signal = Signal(dict)   # Sinal para os dados da luva
-    eeg_signal = Signal(dict)     # Sinal para os dados de EEG
+    glove_signal = Signal(dict)   # Sinal para os dados de EEG (muda para EEG na verdade, mas o sinal é unificado)
+    eeg_signal = Signal(dict)     # Sinal específico para telemetria EEG
+    discovery_finished_signal = Signal(bool)
 
     def __init__(self):
         super().__init__()
@@ -31,25 +33,30 @@ class HubController(QObject):
         
         # Modo de controle do EEG: 'none', 'attention', 'meditation'
         self.eeg_control_mode = 'none'
+        self.eeg_gain = self.config.get("eeg_gain", 1.0)
+        self.eeg_smoothing = self.config.get("eeg_smoothing", 0.7)
+        self._ema_state = {}
         
-        # Estado Global de Predição para evitar conflitos entre fontes
+        # Estado Global de Predição
         self._last_valid_prediction = {"gesture_id": -1, "timestamp": 0, "source": "NONE"}
         
-        # Calibração e Classificação Personalizada
-        self.calibration_state = None  # None, 'CLOSED', 'HALF', 'OPEN'
+        # Calibração e Classificação
+        self.calibration_state = None
         self.calibration_buffer = []
-        # Carrega a calibração invisível do disco! Evita recalibrar a luva toda vez que ligar
         self.calibrated_vectors = self.config.get("glove_calibration", {})
         self.glove_weights = self.config.get("glove_weights", [1.0, 1.0, 1.0, 1.0, 1.0])
         
-        # Clinical Calibration (10 cycles)
+        # Clinical Calibration
         self.clinical_calibration_active = False
-        self.clinical_stage = None # 'OPEN', 'CLOSED'
-        self.clinical_max_buffer = [] # List of max per cycle
-        self.clinical_min_buffer = [] # List of min per cycle
+        self.clinical_stage = None
+        self.clinical_max_buffer = []
+        self.clinical_min_buffer = []
         self.current_sample_max = None
         self.current_sample_min = None
         self.clinical_thresholds = self.config.get("glove_clinical_thresholds", [])
+        
+        # Portas detectadas
+        self.eeg_port_detected = self.config.get("eeg_port", "")
         
         # Conexão: Frames da câmera -> Processador de Mão
         self.processor.prediction_signal.connect(self._handle_camera_prediction)
@@ -103,12 +110,22 @@ class HubController(QObject):
 
     def set_eeg_active(self, active):
         if active:
-            if not self.eeg:
-                self.eeg = EEGInput(port='COM5') # Porta padrão para teste
+            # Pega a porta mais atual da configuração (selecionada na UI)
+            port = self.config.get("eeg_port", "")
+            
+            # Se o objeto não existe ou a porta mudou, (re)cria
+            if not self.eeg or self.eeg.port != port:
+                if self.eeg: 
+                    self.eeg.stop()
+                    self.eeg.wait()
+                
+                print(f"DEBUG HUB: Iniciando EEG na porta {port}")
+                self.eeg = EEGInput(port=port)
                 self.eeg.status_signal.connect(self.status_signal.emit)
                 self.eeg.data_signal.connect(self._handle_eeg_data)
+            
             self.eeg.start()
-            self.status_signal.emit("EEG ATIVADO")
+            self.status_signal.emit(f"EEG ATIVADO ({port})")
         else:
             if self.eeg:
                 self.eeg.stop()
@@ -362,23 +379,82 @@ class HubController(QObject):
 
     def _handle_eeg_data(self, data):
         """Processa dados EEG e se o controle estiver ativo, interage com a mão"""
+        # Aplica amplificador de sensibilidade: expande variações em torno do ponto médio (50)
+        gain = getattr(self, 'eeg_gain', 1.0)
+        raw_att = data.get("attention", 0)
+        raw_med = data.get("meditation", 0)
+        
+        amp_att = int(max(0, min(100, 50 + (raw_att - 50) * gain)))
+        amp_med = int(max(0, min(100, 50 + (raw_med - 50) * gain)))
+        
+        # Substitui os valores no dict com os amplificados
+        data["attention"] = amp_att
+        data["meditation"] = amp_med
+        data["raw_attention"] = raw_att  # Preserva original para debug
+        data["raw_meditation"] = raw_med
+        
+        # Calcula métricas customizadas a partir das 8 bandas brutas
+        waves = data.get("waves", {})
+        low_alpha = waves.get("low_alpha", 0)
+        high_alpha = waves.get("high_alpha", 0)
+        low_beta = waves.get("low_beta", 0)
+        high_beta = waves.get("high_beta", 0)
+        theta = waves.get("theta", 0)
+        
+        alpha_sum = low_alpha + high_alpha
+        beta_sum = low_beta + high_beta
+        
+        # Métricas customizadas brutas (divisão segura)
+        raw_metrics = {
+            "foco_real": min(100, (beta_sum / max(1, alpha_sum)) * 25),
+            "relaxamento_real": min(100, (alpha_sum / max(1, beta_sum)) * 25),
+            "sonolencia": min(100, (theta / max(1, low_alpha)) * 25),
+            "engajamento": min(100, (beta_sum / max(1, alpha_sum + theta)) * 25),
+        }
+        
+        # Aplica filtro EMA (Exponential Moving Average) para suavizar espasmos
+        s = getattr(self, 'eeg_smoothing', 0.7)
+        smoothed = {}
+        for key, raw_val in raw_metrics.items():
+            prev = self._ema_state.get(key, raw_val)
+            smoothed[key] = prev * s + raw_val * (1.0 - s)
+            self._ema_state[key] = smoothed[key]
+        
+        data["custom_metrics"] = smoothed
+        
         self.eeg_signal.emit(data)
         
         # Controle sequencial de dedos pelo EEG
         if getattr(self, "eeg_control_mode", "none") != "none":
             mode = self.eeg_control_mode
-            val = data.get(mode, 0)
+            
+            # Pega o valor (seja NeuroSky ou Custom)
+            if mode in ["foco_real", "relaxamento_real", "sonolencia", "engajamento"]:
+                val = data.get("custom_metrics", {}).get(mode, 0)
+            else:
+                val = data.get(mode, 0)
             
             # Apenas envia predição se a confiança (signal) for boa
             sig = data.get("signal", 200)
             if sig < 50:
-                # Meditação abre a mão (0=fechado, 100=aberto)
-                # Atenção fecha a mão (0=aberto, 100=fechado)
-                invert = (mode == 'attention')
+                # Modos customizados costumam ser proporcionais
+                if mode == "foco_real":
+                    # Foco real: quanto maior, mais aberta a mão (0=fechado, 100=aberto)
+                    fingers_data = {k: val for k in ['polegar', 'indicador', 'medio', 'anelar', 'minimo']}
+                    # Ajuste de escala para os servos (0-100 -> angulos)
+                    # No polegar 0=fechado(50), 100=aberto(130) -> 50 + val*0.8
+                    # Nos outros 0=fechado(60), 100=aberto(180) -> 60 + val*1.2
+                    fingers_data['polegar'] = 50 + (val * 0.8)
+                    for k in ['indicador', 'medio', 'anelar', 'minimo']:
+                        fingers_data[k] = 60 + (val * 1.2)
+                else:
+                    # Meditação abre a mão (0=fechado, 100=aberto)
+                    # Atenção fecha a mão (0=aberto, 100=fechado)
+                    invert = (mode == 'attention')
+                    fingers_data = self._calculate_eeg_fingers(val, invert=invert)
                 
-                fingers_data = self._calculate_eeg_fingers(val, invert=invert)
                 prediction_data = {
-                    "prediction": f"EEG {mode.upper()}: {val}%",
+                    "prediction": f"EEG {mode.upper()}: {int(val)}%",
                     "gesture_id": 30, # ID para designação fluida
                     "confidence": 100 - sig, 
                     "source": "EEG",
@@ -467,23 +543,26 @@ class HubController(QObject):
             traceback.print_exc()
 
     def auto_detect_all_ports(self):
-        """Varre o sistema em busca de Arduino e BrainLink"""
+        """Varre o sistema em busca de Arduino e BrainLink (Sincrono para evitar race conditions)"""
         self.status_signal.emit("Auto-detectando dispositivos...")
         
         # 1. Arduino
         success_arduino = self.arduino.connect(auto_scan=True)
+        if success_arduino:
+            self.config.set("arduino_port", self.arduino.port)
+            self.status_signal.emit(f"Arduino na porta {self.arduino.port}")
         
-        # 2. EEG (apenas prepara a porta se encontrar algo)
+        # 2. EEG
         import serial.tools.list_ports
         for p in serial.tools.list_ports.comports():
-            if "bluetooth" in p.description.lower() or "brainlink" in p.description.lower():
-                if self.eeg:
-                    self.eeg.port = p.device
-                    self.status_signal.emit(f"Porta EEG ajustada para {p.device}")
+            p_desc = p.description.lower()
+            if "brainlink" in p_desc or "bluetooth" in p_desc or "mindwave" in p_desc:
+                self.config.set("eeg_port", p.device)
+                self.status_signal.emit(f"Porta EEG detectada: {p.device}")
                 break
         
-        if success_arduino:
-            self.status_signal.emit("Auto-detecção finalizada com sucesso.")
+        self.status_signal.emit("Auto-detecção finalizada.")
+        self.discovery_finished_signal.emit(True)
 
     def set_glove_weight(self, index, weight):
         """Ajusta do multiplicador de calibração em tempo de execução"""

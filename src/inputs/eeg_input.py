@@ -35,25 +35,39 @@ class EEGInput(QThread):
             "waves": {
                 "delta": data.delta,
                 "theta": data.theta,
-                "alpha": (data.low_alpha + data.high_alpha) / 2,
-                "beta": (data.low_beta + data.high_beta) / 2,
-                "gamma": (data.low_gamma + data.high_gamma) / 2
+                "low_alpha": data.low_alpha,
+                "high_alpha": data.high_alpha,
+                "low_beta": data.low_beta,
+                "high_beta": data.high_beta,
+                "low_gamma": data.low_gamma,
+                "high_gamma": data.high_gamma,
             },
             "timestamp": time.time()
         })
 
     def run(self):
+        if self.running and self.eeg and self.eeg.serial and self.eeg.serial.is_open:
+            print("DEBUG EEG_INPUT: Já conectado e rodando. Ignorando novo scan.")
+            return
+
         import serial.tools.list_ports
         available = serial.tools.list_ports.comports()
         
         ports_to_try = [self.port] if self.port else []
         if self.auto_scan:
-            # BrainLink costuma ser um link Bluetooth
+            # BrainLink costuma ser um link Bluetooth ou USB
             for p in available:
                 if p.device != self.port:
-                    if "bluetooth" in p.description.lower() or "brainlink" in p.description.lower():
+                    p_desc = p.description.lower()
+                    if "bluetooth" in p_desc or "brainlink" in p_desc or "mindwave" in p_desc:
                         ports_to_try.insert(0, p.device)
-                    # Removido: fallback para TODAS as portas do sistema, que causava lentidão extrema
+                    elif "usb-serial" in p_desc or "ch340" in p_desc:
+                         # Fallback para adaptadores USB
+                        ports_to_try.append(p.device)
+        
+        if not ports_to_try:
+            print("[DEBUG EEG_INPUT] Nenhuma porta suspeita encontrada nos filtros.")
+            self.status_signal.emit("EEG: Nenhuma porta bluetooth/brainlink encontrada.")
 
         for port in ports_to_try:
             try:

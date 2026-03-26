@@ -81,6 +81,16 @@ class ArduinoOutput(QObject):
 
     def connect(self, auto_scan=False):
         """Tenta conectar ao Arduino. Se auto_scan for True, tenta todas as portas."""
+        if self.board:
+            try:
+                # Tenta um comando simples para ver se ainda está vivo
+                self.board.iterate()
+                print("DEBUG ARDUINO: Já conectado e operacional.")
+                return True
+            except:
+                print("DEBUG ARDUINO: Conexão antiga perdida. Reconectando...")
+                self.board = None
+
         import serial.tools.list_ports
         available = serial.tools.list_ports.comports()
         

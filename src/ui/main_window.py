@@ -180,6 +180,7 @@ class MainWindow(QMainWindow):
         self.hub.prediction_signal.connect(self.update_prediction)
         self.hub.glove_signal.connect(self.update_glove_data)
         self.hub.eeg_signal.connect(self.update_eeg_data)
+        self.hub.discovery_finished_signal.connect(self._on_discovery_finished)
 
         # Gamificação EEG (Desafio de 60s)
         self.eeg_test_active = False
@@ -316,6 +317,10 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'attn_plot'):
             self.attn_plot.update_theme(t['input_bg'], t['border'])
             self.med_plot.update_theme(t['input_bg'], t['border'])
+        
+        if hasattr(self, 'custom_plots'):
+            for plot in self.custom_plots.values():
+                plot.update_theme(t['input_bg'], t['border'])
 
         current_color = "#10B981" if "#10B981" in self.result_label.styleSheet() else t['text_bright']
         self.result_label.setStyleSheet(
@@ -717,26 +722,86 @@ class MainWindow(QMainWindow):
         gp_outer = QVBoxLayout(self.eeg_graph_panel)
         gp_outer.setContentsMargins(0,0,0,0)
         gp_outer.setSpacing(0)
-        gp_outer.addWidget(_panel_header("Eletroencefalograma Vivo", "#3B82F6", t))
 
-        gp_inner = QVBoxLayout()
-        gp_inner.setContentsMargins(25, 25, 25, 25)
-        gp_inner.setSpacing(15)
+        # Header com toggle buttons
+        header_bar = QWidget()
+        header_bar.setFixedHeight(36)
+        header_bar.setObjectName("panel_header")
+        header_lyt = QHBoxLayout(header_bar)
+        header_lyt.setContentsMargins(14, 0, 14, 0)
+        
+        dot = QLabel("●")
+        dot.setStyleSheet("color:#3B82F6; font-size:9px; margin-right:6px;")
+        header_lyt.addWidget(dot)
+        lbl_title = QLabel("ELETROENCEFALOGRAMA VIVO")
+        lbl_title.setObjectName("panel_title")
+        header_lyt.addWidget(lbl_title)
+        header_lyt.addStretch()
+
+        self.btn_view_neurosky = QPushButton("NeuroSky")
+        self.btn_view_custom = QPushButton("Custom")
+        for btn in [self.btn_view_neurosky, self.btn_view_custom]:
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setFixedHeight(24)
+            btn.setStyleSheet("background:transparent; color:#A7A7C6; border:1px solid #3A3A52; border-radius:4px; padding:0 12px; font-size:10px; font-weight:bold;")
+        
+        self.btn_view_neurosky.setStyleSheet("background:#3B82F6; color:#FFFFFF; border:none; border-radius:4px; padding:0 12px; font-size:10px; font-weight:bold;")
+        self.btn_view_neurosky.clicked.connect(lambda: self._switch_eeg_view(0))
+        self.btn_view_custom.clicked.connect(lambda: self._switch_eeg_view(1))
+        header_lyt.addWidget(self.btn_view_neurosky)
+        header_lyt.addWidget(self.btn_view_custom)
+
+        gp_outer.addWidget(header_bar)
+
+        # Stacked Widget para as duas visualizações
+        self.eeg_wave_stack = QStackedWidget()
+
+        # === PÁGINA 0: NeuroSky (Atenção + Meditação) ===
+        page_neurosky = QWidget()
+        ns_lyt = QVBoxLayout(page_neurosky)
+        ns_lyt.setContentsMargins(25, 25, 25, 25)
+        ns_lyt.setSpacing(15)
 
         lbl_att_g = QLabel("Onda de Foco (Atenção)")
         lbl_att_g.setStyleSheet("color:#EF4444; font-weight:bold; font-size:12px; letter-spacing:1px;")
         self.attn_plot = WavePlotWidget("#EF4444")
-        gp_inner.addWidget(lbl_att_g)
-        gp_inner.addWidget(self.attn_plot)
-        gp_inner.addSpacing(10)
+        ns_lyt.addWidget(lbl_att_g)
+        ns_lyt.addWidget(self.attn_plot)
+        ns_lyt.addSpacing(10)
 
         lbl_med_g = QLabel("Onda de Relaxamento (Meditação)")
         lbl_med_g.setStyleSheet("color:#3B82F6; font-weight:bold; font-size:12px; letter-spacing:1px;")
         self.med_plot = WavePlotWidget("#3B82F6")
-        gp_inner.addWidget(lbl_med_g)
-        gp_inner.addWidget(self.med_plot)
+        ns_lyt.addWidget(lbl_med_g)
+        ns_lyt.addWidget(self.med_plot)
 
-        gp_outer.addLayout(gp_inner)
+        self.eeg_wave_stack.addWidget(page_neurosky)
+
+        # === PÁGINA 1: Custom Metrics (4 ondas) ===
+        page_custom = QWidget()
+        cm_lyt = QVBoxLayout(page_custom)
+        cm_lyt.setContentsMargins(25, 15, 25, 15)
+        cm_lyt.setSpacing(6)
+
+        custom_wave_defs = [
+            ("Foco Real (Beta/Alpha)", "#EF4444", "foco_real"),
+            ("Relaxamento Real (Alpha/Beta)", "#3B82F6", "relaxamento_real"),
+            ("Sonolência (Theta/Alpha)", "#8B5CF6", "sonolencia"),
+            ("Engajamento (Beta/(Alpha+Theta))", "#F59E0B", "engajamento"),
+        ]
+        self.custom_plots = {}
+        for label_text, color, key in custom_wave_defs:
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(f"color:{color}; font-weight:bold; font-size:10px; letter-spacing:1px;")
+            plot = WavePlotWidget(color)
+            plot.setMinimumHeight(70)
+            cm_lyt.addWidget(lbl)
+            cm_lyt.addWidget(plot)
+            self.custom_plots[key] = plot
+
+        self.eeg_wave_stack.addWidget(page_custom)
+
+        gp_outer.addWidget(self.eeg_wave_stack)
         eeg_split.addWidget(self.eeg_graph_panel, 2)
 
         self.eeg_ctrl_panel = QFrame()
@@ -758,6 +823,12 @@ class MainWindow(QMainWindow):
         self.eeg_label.setAlignment(Qt.AlignCenter)
         self.eeg_label.setStyleSheet("color:#F59E0B; font-family:'Consolas', monospace; font-size:14px; font-weight:bold;")
         sig_lyt.addWidget(self.eeg_label)
+
+        self.eeg_battery_label = QLabel("BATERIA: --%")
+        self.eeg_battery_label.setAlignment(Qt.AlignCenter)
+        self.eeg_battery_label.setStyleSheet("color:#A7A7C6; font-family:'Consolas', monospace; font-size:12px; font-weight:bold;")
+        sig_lyt.addWidget(self.eeg_battery_label)
+
         cp_inner.addWidget(self.eeg_card_sig)
 
         mode_lbl = QLabel("MODO DE ATUAÇÃO:")
@@ -768,7 +839,8 @@ class MainWindow(QMainWindow):
         self.rb_none = QRadioButton("Mudo (Leitura Pura)")
         self.rb_attn = QRadioButton("Foco Concentrado (>60)")
         self.rb_med = QRadioButton("Transe/Meditação (>60)")
-        for rb in [self.rb_none, self.rb_attn, self.rb_med]:
+        self.rb_custom_focus = QRadioButton("Foco Real (Proporcional)")
+        for rb in [self.rb_none, self.rb_attn, self.rb_med, self.rb_custom_focus]:
             self.mode_group.addButton(rb)
             cp_inner.addWidget(rb)
         
@@ -776,6 +848,46 @@ class MainWindow(QMainWindow):
         self.rb_none.toggled.connect(lambda c: self._set_eeg_mode('none') if c else None)
         self.rb_attn.toggled.connect(lambda c: self._set_eeg_mode('attention') if c else None)
         self.rb_med.toggled.connect(lambda c: self._set_eeg_mode('meditation') if c else None)
+        self.rb_custom_focus.toggled.connect(lambda c: self._set_eeg_mode('foco_real') if c else None)
+
+        cp_inner.addSpacing(15)
+
+        # Amplificador de Sensibilidade EEG
+        gain_lbl = QLabel("AMPLIFICADOR:")
+        gain_lbl.setObjectName("app_title")
+        cp_inner.addWidget(gain_lbl)
+        
+        gain_row = QHBoxLayout()
+        gain_row.setSpacing(8)
+        self.eeg_gain_spin = QDoubleSpinBox()
+        self.eeg_gain_spin.setRange(1.0, 5.0)
+        self.eeg_gain_spin.setSingleStep(0.5)
+        self.eeg_gain_spin.setDecimals(1)
+        self.eeg_gain_spin.setSuffix(" x")
+        self.eeg_gain_spin.setValue(self.hub.eeg_gain)
+        self.eeg_gain_spin.valueChanged.connect(self._set_eeg_gain)
+        gain_desc = QLabel("Sensibilidade dos sinais")
+        gain_desc.setObjectName("dim_label")
+        gain_row.addWidget(self.eeg_gain_spin)
+        gain_row.addWidget(gain_desc)
+        gain_row.addStretch()
+        cp_inner.addLayout(gain_row)
+
+        # Suavização EMA
+        smooth_row = QHBoxLayout()
+        smooth_row.setSpacing(8)
+        self.eeg_smooth_spin = QDoubleSpinBox()
+        self.eeg_smooth_spin.setRange(0.0, 0.95)
+        self.eeg_smooth_spin.setSingleStep(0.05)
+        self.eeg_smooth_spin.setDecimals(2)
+        self.eeg_smooth_spin.setValue(self.hub.eeg_smoothing)
+        self.eeg_smooth_spin.valueChanged.connect(self._set_eeg_smoothing)
+        smooth_desc = QLabel("Suavização (0=bruto, 0.95=liso)")
+        smooth_desc.setObjectName("dim_label")
+        smooth_row.addWidget(self.eeg_smooth_spin)
+        smooth_row.addWidget(smooth_desc)
+        smooth_row.addStretch()
+        cp_inner.addLayout(smooth_row)
 
         cp_inner.addSpacing(15)
         self.btn_test_eeg = QPushButton("🎯 INICIAR DESAFIO (60s)")
@@ -818,6 +930,40 @@ class MainWindow(QMainWindow):
         med_row.addWidget(self.med_label)
         med_row.addWidget(self.med_bar)
         cp_inner.addLayout(med_row)
+
+        cp_inner.addSpacing(10)
+        custom_lbl = QLabel("MÉTRICAS CUSTOMIZADAS:")
+        custom_lbl.setObjectName("app_title")
+        cp_inner.addWidget(custom_lbl)
+
+        self.custom_metric_bars = {}
+        self.custom_metric_labels = {}
+        metric_colors = {
+            "foco_real": ("#EF4444", "FOCO"),
+            "relaxamento_real": ("#3B82F6", "RELAX"),
+            "sonolencia": ("#8B5CF6", "SONO"),
+            "engajamento": ("#F59E0B", "ENGAJ"),
+        }
+        for key, (color, label_text) in metric_colors.items():
+            row = QHBoxLayout()
+            row.setSpacing(6)
+            lbl = QLabel(label_text)
+            lbl.setFixedWidth(48)
+            lbl.setStyleSheet(f"color:{color}; font-size:10px; font-weight:bold; font-family:'Consolas', monospace;")
+            bar = QProgressBar()
+            bar.setFixedHeight(10)
+            bar.setRange(0, 100)
+            bar.setTextVisible(False)
+            bar.setStyleSheet(f"QProgressBar {{background-color:#2B2B3E; border-radius:5px;}} QProgressBar::chunk {{background-color:{color}; border-radius:5px;}}")
+            val_lbl = QLabel("0")
+            val_lbl.setFixedWidth(28)
+            val_lbl.setStyleSheet(f"color:{color}; font-size:10px; font-weight:bold; font-family:'Consolas', monospace;")
+            row.addWidget(lbl)
+            row.addWidget(bar)
+            row.addWidget(val_lbl)
+            cp_inner.addLayout(row)
+            self.custom_metric_bars[key] = bar
+            self.custom_metric_labels[key] = val_lbl
 
         cp_outer.addLayout(cp_inner)
         eeg_split.addWidget(self.eeg_ctrl_panel, 1)
@@ -864,9 +1010,21 @@ class MainWindow(QMainWindow):
             QComboBox {{ background-color:{t['input_bg']}; color:{t['input_color']}; border:1px solid {t['border']}; border-radius:6px; padding:5px 8px; font-size:14px; margin-right: 10px; }}
             QComboBox QAbstractItemView {{ background-color:{t['input_bg']}; color:{t['input_color']}; selection-background-color:#3B82F6; selection-color:#FFFFFF; }}
         """)
+
+        self.eeg_port_combo = QComboBox()
+        self.eeg_port_combo.setFixedHeight(36)
+        self.eeg_port_combo.setMinimumWidth(180)
+        self.eeg_port_combo.setStyleSheet(self.port_combo.styleSheet())
+        
         self._refresh_ports_combo()
-        self.port_combo.currentTextChanged.connect(self._update_port)
+        
+        self.port_combo.currentTextChanged.connect(self._update_arduino_port)
+        self.eeg_port_combo.currentTextChanged.connect(self._update_eeg_port)
+
         port_row.addWidget(self.port_combo)
+        port_row.addSpacing(20)
+        port_row.addWidget(QLabel("PORTA EEG:"))
+        port_row.addWidget(self.eeg_port_combo)
         
         self.btn_auto_ports = ActionButton("🔍 DETECTAR", color="#8B5CF6")
         self.btn_auto_ports.setFixedHeight(36) # Forçando a altura para bater com a combobox
@@ -932,42 +1090,65 @@ class MainWindow(QMainWindow):
     # ── Callbacks ─────────────────────────────────────────────── #
     def _refresh_ports_combo(self):
         self.port_combo.blockSignals(True)
+        self.eeg_port_combo.blockSignals(True)
         self.port_combo.clear()
+        self.eeg_port_combo.clear()
         
         from outputs.arduino_output import ArduinoOutput
         ports = ArduinoOutput.list_available_ports()
         
-        saved_port = self.hub.config.get("arduino_port", "COM5")
-        idx_to_select = -1
+        saved_arduino = self.hub.config.get("arduino_port", "COM5")
+        saved_eeg = self.hub.config.get("eeg_port", "")
+        
+        idx_arduino = -1
+        idx_eeg = -1
         
         for i, port_info in enumerate(ports):
             port_name = port_info.split(' ')[0]
             self.port_combo.addItem(port_info, port_name)
-            if port_name == saved_port:
-                idx_to_select = i
+            self.eeg_port_combo.addItem(port_info, port_name)
+            
+            if port_name == saved_arduino: idx_arduino = i
+            if port_name == saved_eeg: idx_eeg = i
                 
         if not ports:
-            self.port_combo.addItem(f"{saved_port} (Desconectado)", saved_port)
-            idx_to_select = 0
+            self.port_combo.addItem(f"{saved_arduino} (OFF)", saved_arduino)
+            self.eeg_port_combo.addItem(f"{saved_eeg} (OFF)", saved_eeg)
+            idx_arduino = 0
+            idx_eeg = 0
 
-        if idx_to_select >= 0:
-            self.port_combo.setCurrentIndex(idx_to_select)
+        if idx_arduino >= 0: self.port_combo.setCurrentIndex(idx_arduino)
+        if idx_eeg >= 0: self.eeg_port_combo.setCurrentIndex(idx_eeg)
             
         self.port_combo.blockSignals(False)
+        self.eeg_port_combo.blockSignals(False)
+        
         if self.port_combo.currentData():
             self.hub.arduino.port = self.port_combo.currentData()
 
     def _on_auto_detect_clicked(self):
+        self.status_bar_label.setText("● BUSCANDO HARDWARE...")
         self.hub.auto_detect_all_ports()
+
+    def _on_discovery_finished(self, success):
+        self._refresh_ports_combo()
+        msg = "Dispositivos Encontrados" if success else "Nenhum dispositivo encontrado"
+        self.status_bar_label.setText(f"● {msg.upper()}")
         self._refresh_ports_combo()
 
-    def _update_port(self, text):
+    def _update_arduino_port(self, text):
         real_port = self.port_combo.currentData()
         if not real_port: real_port = text.split(' ')[0]
-        
         if self.hub.arduino:
             self.hub.arduino.port = real_port
             self.hub.config.set("arduino_port", real_port)
+            self.update_status_bar(f"Porta Arduino: {real_port}")
+
+    def _update_eeg_port(self, text):
+        real_port = self.eeg_port_combo.currentData()
+        if not real_port: real_port = text.split(' ')[0]
+        self.hub.config.set("eeg_port", real_port)
+        self.update_status_bar(f"Porta EEG: {real_port}")
 
     def _toggle_output_hand(self, checked):
         if checked:
@@ -1016,6 +1197,21 @@ class MainWindow(QMainWindow):
 
     def _set_eeg_mode(self, mode):
         self.hub.eeg_control_mode = mode
+
+    def _set_eeg_gain(self, value):
+        self.hub.eeg_gain = value
+        self.hub.config.set("eeg_gain", value)
+
+    def _set_eeg_smoothing(self, value):
+        self.hub.eeg_smoothing = value
+        self.hub.config.set("eeg_smoothing", value)
+
+    def _switch_eeg_view(self, idx):
+        self.eeg_wave_stack.setCurrentIndex(idx)
+        active_style = "background:#3B82F6; color:#FFFFFF; border:none; border-radius:4px; padding:0 12px; font-size:10px; font-weight:bold;"
+        inactive_style = "background:transparent; color:#A7A7C6; border:1px solid #3A3A52; border-radius:4px; padding:0 12px; font-size:10px; font-weight:bold;"
+        self.btn_view_neurosky.setStyleSheet(active_style if idx == 0 else inactive_style)
+        self.btn_view_custom.setStyleSheet(active_style if idx == 1 else inactive_style)
 
     def update_status_bar(self, message):
         self.status_bar_label.setText(f"● {message.upper()}")
@@ -1104,6 +1300,7 @@ class MainWindow(QMainWindow):
                 self.eeg_test_lbl.setText(f"FASE 2: RELAXE PROFUNDAMENTE! ({self.eeg_test_seconds}s)")
 
     def update_eeg_data(self, data):
+        # print(f"DEBUG UI EEG: Recebi dados") # Silenciado por padrão, ative se necessário
         att = data.get("attention", 0)
         med = data.get("meditation", 0)
         sig = data.get("signal", 200)
@@ -1122,6 +1319,21 @@ class MainWindow(QMainWindow):
             self.attn_plot.add_value(att)
             self.med_plot.add_value(med)
 
+        # Custom Wave Plots
+        custom = data.get("custom_metrics", {})
+        if hasattr(self, 'custom_plots'):
+            for key, plot in self.custom_plots.items():
+                val = int(custom.get(key, 0))
+                plot.add_value(val)
+
+        # Custom Metric Bars
+        custom = data.get("custom_metrics", {})
+        for key, bar in self.custom_metric_bars.items():
+            val = int(custom.get(key, 0))
+            bar.setValue(val)
+            if key in self.custom_metric_labels:
+                self.custom_metric_labels[key].setText(str(val))
+
         status_text = "CONEXÃO LIMPA" if sig < 50 else ("FALHANDO" if sig < 200 else "DISPOSITIVO OFF")
         self.eeg_label.setText(f"SINAL {sig:3d}\n{status_text}")
 
@@ -1129,6 +1341,18 @@ class MainWindow(QMainWindow):
         self.eeg_label.setStyleSheet(
             f"color:{color}; font-family:'Consolas', monospace; font-size:14px; font-weight:bold;"
         )
+
+        # Atualização da Bateria
+        batt = data.get("battery", 0)
+        if batt > 0:
+            self.eeg_battery_label.setText(f"BATERIA: {batt}%")
+            b_color = "#10B981" if batt > 50 else ("#F59E0B" if batt > 20 else "#EF4444")
+            self.eeg_battery_label.setStyleSheet(
+                f"color:{b_color}; font-family:'Consolas', monospace; font-size:12px; font-weight:bold;"
+            )
+        else:
+            self.eeg_battery_label.setText("BATERIA: --%")
+            self.eeg_battery_label.setStyleSheet("color:#A7A7C6; font-family:'Consolas', monospace; font-size:12px; font-weight:bold;")
 
 
 if __name__ == "__main__":

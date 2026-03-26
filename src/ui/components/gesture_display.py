@@ -39,6 +39,7 @@ class GestureDisplay(QLabel):
             scaled_pixmap = pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.setPixmap(scaled_pixmap)
         else:
-            print(f"DEBUG GESTURE: Arquivo NAO encontrado: {img_path}")
-            self.setText(f"GESTO {gesture_id}\n(Imagem ausente)")
+            if gesture_id != 30: # Evita log de erro para métricas EEG dinâmicas
+                print(f"DEBUG GESTURE: Arquivo NAO encontrado: {img_path}")
+            self.setText(f"GESTO {gesture_id}\n(Imagem ausente)" if gesture_id != 30 else "EEG DINÂMICO")
             self.setPixmap(QPixmap())
