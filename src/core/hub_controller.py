@@ -69,7 +69,7 @@ class HubController(QObject):
         
         # Conexão: Frames da câmera -> Processador de Mão
         self.processor.prediction_signal.connect(self._handle_camera_prediction)
-        self.processor.processed_frame_signal.connect(self.frame_signal.emit)        
+        self.processor.processed_frame_signal.connect(lambda f, s: self.frame_signal.emit(f, s))
         # Conexão status arduino
         self.arduino.status_signal.connect(self.status_signal.emit)
         self.arduino.arduino_status_signal.connect(self.arduino_status_signal.emit)

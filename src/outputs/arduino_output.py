@@ -118,12 +118,14 @@ class ArduinoOutput(QObject):
                 self.port = port
                 print(f"DEBUG ARDUINO: Sucesso na {port}!")
                 self.status_signal.emit(f"Conectado na {port}")
+                self.arduino_status_signal.emit(True)
                 return True
             except Exception as e:
                 print(f"DEBUG ARDUINO: Falha na {port}: {str(e)}")
                 continue
         
         self.status_signal.emit("Falha ao encontrar Arduino.")
+        self.arduino_status_signal.emit(False)
         return False
 
     def run_test_sequence(self):

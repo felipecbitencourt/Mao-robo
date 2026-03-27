@@ -53,5 +53,5 @@
     "eeg_gain": 5.0,
     "eeg_smoothing": 0.1999999999999999,
     "camera_index": 1,
-    "camera2_index": 1
+    "camera2_index": 0
 }

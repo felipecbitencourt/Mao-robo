@@ -8,6 +8,25 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from core.paths import resource_path
 
+class KalmanFilter:
+    """Filtro de Kalman 1D para suavização de sinais (ângulos de servos)"""
+    def __init__(self, q=0.1, r=1.0, e=1.0, initial_value=180.0):
+        self.q = q      # Process variance (confiança no modelo)
+        self.r = r      # Measurement variance (confiança no sensor)
+        self.p = e      # Estimated error
+        self.x = initial_value # Valor estimado
+
+    def update(self, measurement):
+        # Prediction
+        self.p = self.p + self.q
+        
+        # Measurement update
+        k = self.p / (self.p + self.r)
+        self.x = self.x + k * (measurement - self.x)
+        self.p = (1 - k) * self.p
+        
+        return self.x
+
 class HandProcessor(QThread):
     prediction_signal = Signal(dict)
     processed_frame_signal = Signal(object, int) # Envia frame com pontos e ID da fonte
@@ -28,6 +47,15 @@ class HandProcessor(QThread):
         self.VisionRunningMode = mp.tasks.vision.RunningMode
         
         self.latest_predictions = {} # Memória de cada câmera {cam_id: prediction_data}
+        
+        # Filtros de Kalman para cada dedo (Q=0.2 para agilidade, R=5.0 para filtragem de ruído)
+        self.kalman_filters = {
+            'polegar': KalmanFilter(q=0.2, r=5.0, initial_value=100.0), # Ratio * 100
+            'indicador': KalmanFilter(q=0.2, r=5.0, initial_value=180.0),
+            'medio': KalmanFilter(q=0.2, r=5.0, initial_value=180.0),
+            'anelar': KalmanFilter(q=0.2, r=5.0, initial_value=180.0),
+            'minimo': KalmanFilter(q=0.2, r=5.0, initial_value=180.0),
+        }
         
         # Mapeamento de dedos conforme main_fluido_v2.pyne
         
@@ -70,14 +98,21 @@ class HandProcessor(QThread):
                     else:
                         frame, source_id = frame_data, 0
                     
-                    prediction_data, processed_frame = self._analyze_frame(frame)
+                    # Fallback para o frame caso a análise falhe
+                    prediction_data = None
+                    processed_frame = frame.copy()
+                    
+                    try:
+                        prediction_data, processed_frame = self._analyze_frame(frame)
+                    except Exception as e:
+                        print(f"DEBUG ANALYSIS ERROR: {e}")
                     
                     if not self.running: break # Interromper se parou durante análise
                     
-                    # Emite o frame processado com sua origem
+                    # Emite o frame processado (SEMPRE)
                     self.processed_frame_signal.emit(processed_frame, source_id)
                     
-                    # Salva na memória e funde resultados
+                    # Salva na memória e funde resultados se a análise teve sucesso
                     if prediction_data:
                         prediction_data["cam_id"] = source_id 
                         self.latest_predictions[source_id] = prediction_data
@@ -90,7 +125,7 @@ class HandProcessor(QThread):
                     # Ocorre quando o MediaPipe fecha o pool antes do loop terminar
                     break
                 except Exception as e:
-                    print(f"DEBUG HAND_PROCESSOR ERROR: {e}")
+                    print(f"DEBUG LOOP ERROR: {e}")
             else:
                 time.sleep(0.01)
         
@@ -126,6 +161,9 @@ class HandProcessor(QThread):
         
         gesture_id = 0
         confidence = 0
+        if result.handedness:
+            confidence = int(result.handedness[0][0].score * 100)
+            
         fingers_state = {}
         processed_frame = frame.copy()
 
@@ -217,34 +255,52 @@ class HandProcessor(QThread):
             fused["source"] = "FUSION"
             return fused
 
-        # Fusão Multi-Câmera (Lógica: Dedo a Dedo Max-Angle)
+        # Fusão Multi-Câmera (Lógica: Média Ponderada Bayesiana)
         fused_fingers = {}
         target_keys = ["polegar", "indicador", "medio", "anelar", "minimo"]
         
-        for key in target_keys:
-            vals = [self.latest_predictions[sid]["fingers"].get(key, 0) for sid in active_sources]
-            fused_fingers[key] = max(vals) # Pega o ângulo mais aberto
-
-        # Recalcular Gesture ID a partir dos dedos fundidos
-        # A lógica de bit do _analyze_frame:
-        # bit 0: indicador, bit 1: médio, bit 2: anelar, bit 3: mínimo
-        # Bit 4: polegar (opcional, mapeamos para ID 16+)
+        # Pesos baseados na confiança
+        conf0 = self.latest_predictions[active_sources[0]]["confidence"]
+        conf1 = self.latest_predictions[active_sources[1]]["confidence"] if len(active_sources) > 1 else 0
         
+        # Filtro de Dominância: Se uma câmera é muito superior (2.5x), usa apenas ela
+        if len(active_sources) > 1:
+            if conf0 > 2.5 * conf1:
+                active_sources = [active_sources[0]]
+            elif conf1 > 2.5 * conf0:
+                active_sources = [active_sources[1]]
+
+        # Se após o filtro restou apenas uma, retorna ela (com flag FUSION)
+        if len(active_sources) == 1:
+            fused = self.latest_predictions[active_sources[0]].copy()
+            fused["source"] = "FUSION"
+            return fused
+
+        # Média Ponderada para as câmeras restantes
+        total_conf = sum([self.latest_predictions[sid]["confidence"] for sid in active_sources])
+        if total_conf == 0: total_conf = 1 # Evita divisão por zero
+        
+        for key in target_keys:
+            weighted_sum = sum([self.latest_predictions[sid]["fingers"].get(key, 0) * self.latest_predictions[sid]["confidence"] for sid in active_sources])
+            raw_angle = weighted_sum / total_conf
+            
+            # Aplica Filtro de Kalman sobre o resultado fundido
+            fused_fingers[key] = int(self.kalman_filters[key].update(raw_angle))
+
+        # Recalcular Gesture ID a partir dos dedos fundidos e filtrados
         new_gid = 0
         if fused_fingers.get("indicador", 0) > 125: new_gid += 1
         if fused_fingers.get("medio", 0) > 125: new_gid += 2
         if fused_fingers.get("anelar", 0) > 125: new_gid += 4
         if fused_fingers.get("minimo", 0) > 125: new_gid += 8
-        
-        # Polegar (ratio > 0.6 em ratio * 100 -> 60)
         if fused_fingers.get("polegar", 0) > 60: new_gid += 16
 
-        display_id = new_gid % 16 # Mantendo compatibilidade com imagens 0-15
+        display_id = new_gid % 16
         
         return {
             "prediction": self._get_gesture_name(display_id),
             "gesture_id": display_id,
-            "confidence": 99,
+            "confidence": int(total_conf / len(active_sources)),
             "fingers": fused_fingers,
             "source": "FUSION",
             "timestamp": now
