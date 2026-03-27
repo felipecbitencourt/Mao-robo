@@ -1,6 +1,6 @@
 {
     "arduino_port": "COM5",
-    "theme_dark_mode": false,
+    "theme_dark_mode": true,
     "glove_calibration": {
         "HALF": [
             0.5915503355704687,
@@ -51,5 +51,7 @@
         1.0
     ],
     "eeg_gain": 5.0,
-    "eeg_smoothing": 0.1999999999999999
+    "eeg_smoothing": 0.1999999999999999,
+    "camera_index": 1,
+    "camera2_index": 1
 }

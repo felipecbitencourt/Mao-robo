@@ -5,6 +5,25 @@ import time
 class CameraInput(QThread):
     frame_signal = Signal(object)  # Emite o frame do OpenCV
 
+    @staticmethod
+    def list_cameras():
+        """Retorna os índices das câmeras que realmente entregam frames válidos"""
+        available = []
+        for i in range(5):
+            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                # Tenta ler 2 frames (algumas câmeras demoram a iniciar ou dão 1 frame vazio)
+                for _ in range(2):
+                    success, frame = cap.read()
+                    if success and frame is not None:
+                        # Verifica se o frame não é puramente preto (maioria dos phantoms)
+                        if frame.mean() > 1.0: 
+                            available.append(i)
+                            break
+                    time.sleep(0.05)
+                cap.release()
+        return available
+
     def __init__(self, camera_index=0):
         super().__init__()
         self.camera_index = camera_index

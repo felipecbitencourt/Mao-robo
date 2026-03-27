@@ -11,7 +11,7 @@ from core.config_manager import ConfigManager
 class HubController(QObject):
     prediction_signal = Signal(dict)
     status_signal = Signal(str)
-    frame_signal = Signal(object)  # Sinal para o frame da câmera
+    frame_signal = Signal(object, int)  # Frame, SourceID (0=Main, 1=Dual)
     glove_signal = Signal(dict)   # Sinal para os dados de EEG (muda para EEG na verdade, mas o sinal é unificado)
     eeg_signal = Signal(dict)     # Sinal específico para telemetria EEG
     discovery_finished_signal = Signal(bool)
@@ -22,6 +22,7 @@ class HubController(QObject):
         super().__init__()
         self.running = False
         self.camera = None
+        self.camera2 = None
         self.glove = None
         self.eeg = None
         self.processor = HandProcessor()
@@ -57,13 +58,18 @@ class HubController(QObject):
         self.current_sample_min = None
         self.clinical_thresholds = self.config.get("glove_clinical_thresholds", [])
         
+        # Dual Vision State
+        self.camera_index = self.config.get("camera_index", 0)
+        self.camera2_index = self.config.get("camera2_index", 1)
+        self.dual_vision_active = False
+        
         # Portas detectadas
         self.eeg_port_detected = self.config.get("eeg_port", "")
+        self.camera_index = self.config.get("camera_index", 0)
         
         # Conexão: Frames da câmera -> Processador de Mão
         self.processor.prediction_signal.connect(self._handle_camera_prediction)
-        self.processor.processed_frame_signal.connect(self.frame_signal.emit) 
-        
+        self.processor.processed_frame_signal.connect(self.frame_signal.emit)        
         # Conexão status arduino
         self.arduino.status_signal.connect(self.status_signal.emit)
         self.arduino.arduino_status_signal.connect(self.arduino_status_signal.emit)
@@ -88,18 +94,46 @@ class HubController(QObject):
         if self.arduino:
             self.arduino.run_test_sequence()
 
-    def set_camera_active(self, active):
+    def set_camera_active(self, active, index=None):
+        if index is not None and index != self.camera_index:
+            self.camera_index = index
+            self.config.set("camera_index", index)
+            if self.camera:
+                self.camera.stop()
+                self.camera = None # Recria no próximo start
+
         if active:
             if not self.camera:
-                self.camera = CameraInput(camera_index=0)
-                self.camera.frame_signal.connect(self.processor.process_frame)
+                self.camera = CameraInput(camera_index=self.camera_index)
+                self.camera.frame_signal.connect(lambda f: self.processor.process_frame(f, 0))
             self.camera.start()
             self.processor.start() # Sempre ligar processador se houver câmera
-            self.status_signal.emit("Câmera ATIVADA")
+            self.status_signal.emit(f"Câmera 1 ATIVADA (Índice: {self.camera_index})")
         else:
             if self.camera:
                 self.camera.stop()
-            self.status_signal.emit("Câmera DESATIVADA")
+            self.status_signal.emit("Câmera 1 DESATIVADA")
+
+    def set_dual_vision(self, active, index=None):
+        """Ativa/Desativa a segunda câmera para visão estéreo"""
+        if index is not None and index != self.camera2_index:
+            self.camera2_index = index
+            self.config.set("camera2_index", index)
+            if self.camera2:
+                self.camera2.stop()
+                self.camera2 = None
+
+        self.dual_vision_active = active
+        if active:
+            if not self.camera2:
+                self.camera2 = CameraInput(camera_index=self.camera2_index)
+                self.camera2.frame_signal.connect(lambda f: self.processor.process_frame(f, 1))
+            self.camera2.start()
+            self.status_signal.emit(f"Visão Dual ATIVADA (Câmera 2 Índice: {self.camera2_index})")
+        else:
+            if self.camera2:
+                self.camera2.stop()
+            self.status_signal.emit("Visão Dual DESATIVADA")
 
     def set_glove_active(self, active):
         if active:
@@ -138,8 +172,13 @@ class HubController(QObject):
             self.status_signal.emit("EEG DESATIVADO")
 
     def _handle_camera_prediction(self, data):
-        """Processa predição vinda da câmera"""
-        data["source"] = "CAMERA"
+        """Processa predição vinda da câmera (simples ou fundida)"""
+        if data.get("source") == "FUSION":
+            data["source"] = "VISÃO DUAL (FUSÃO)"
+        else:
+            cam_id = data.get("cam_id", 0)
+            data["source"] = f"CAMERA {cam_id + 1}"
+            
         self._dispatch_prediction(data)
 
     def _handle_glove_data(self, data):
@@ -220,10 +259,9 @@ class HubController(QObject):
             6: "ANELAR",
             7: "MÍNIMO",
             11: "OK / GESTO 11",
-            20: "BEM FECHADA",  # IDs customizados para calibração
+            20: "BEM FECHADA",
             21: "MEIO ABERTA",
-            22: "BEM ABERTA",
-            -1: "SEM DISPOSITIVO"
+            22: "BEM ABERTA"
         }
         
         prediction_data = {
@@ -597,6 +635,9 @@ class HubController(QObject):
             if self.camera:
                 self.camera.stop()
                 self.camera.wait() 
+            if self.camera2:
+                self.camera2.stop()
+                self.camera2.wait()
             if self.glove:
                 self.glove.stop()
                 self.glove.wait() 

@@ -629,9 +629,19 @@ class MainWindow(QMainWindow):
         video_outer.setSpacing(0)
         video_outer.addWidget(_panel_header("Câmera Inteligente (MediaPipe)", "#3B82F6", t))
 
+        self.video_layout = QHBoxLayout()
+        self.video_layout.setContentsMargins(0, 0, 0, 0)
+        self.video_layout.setSpacing(10)
+        
         self.video_display = VideoDisplay()
-        self.hub.frame_signal.connect(self.video_display.update_frame)
-        video_outer.addWidget(self.video_display)
+        self.video_display2 = VideoDisplay()
+        self.video_display2.setVisible(False) # Oculto por padrão
+        
+        self.video_layout.addWidget(self.video_display)
+        self.video_layout.addWidget(self.video_display2)
+        
+        self.hub.frame_signal.connect(self._handle_processed_frame)
+        video_outer.addLayout(self.video_layout)
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(30)
@@ -656,6 +666,18 @@ class MainWindow(QMainWindow):
         self.source_label = QLabel("Fonte: —")
         self.source_label.setStyleSheet("color:#E94560; font-weight:bold; font-size:12px; letter-spacing:1px;")
         text_col.addWidget(self.source_label)
+        
+        self.btn_dual_vision = QPushButton("ATIVAR VISÃO DUAL")
+        self.btn_dual_vision.setCheckable(True)
+        self.btn_dual_vision.setCursor(Qt.PointingHandCursor)
+        self.btn_dual_vision.setFixedHeight(32)
+        self.btn_dual_vision.setStyleSheet("""
+            QPushButton { background-color: #1A1A26; color: #3B82F6; border: 1px solid #3B82F6; border-radius: 6px; font-weight: bold; font-size: 11px; margin-top: 10px; }
+            QPushButton:checked { background-color: #3B82F6; color: white; }
+        """)
+        self.btn_dual_vision.toggled.connect(self._toggle_dual_vision)
+        text_col.addWidget(self.btn_dual_vision)
+        
         text_col.addSpacing(16)
         
         text_col.addWidget(_section_label("Visão Fluída de Mão (MediaPipe)"))
@@ -1098,6 +1120,41 @@ class MainWindow(QMainWindow):
 
         self.eeg_port_combo = QComboBox()
         self.eeg_port_combo.setFixedHeight(36)
+        self.eeg_port_combo.setMinimumWidth(250)
+        self.eeg_port_combo.setStyleSheet(self.port_combo.styleSheet())
+        
+        # Seleção de Câmera
+        left_panel.addWidget(_section_label("Captura de Vídeo (Webcam)"))
+        cam_row = QHBoxLayout()
+        self.cam_combo = QComboBox()
+        self.cam_combo.setFixedHeight(42)
+        self.cam_combo.setMinimumWidth(250)
+        self.cam_combo.setStyleSheet(self.port_combo.styleSheet())
+        
+        self.btn_refresh_cams = ActionButton("🔄", color="#3B82F6")
+        self.btn_refresh_cams.setFixedSize(48, 42)
+        self.btn_refresh_cams.clicked.connect(self._refresh_camera_list)
+        
+        cam_row.addWidget(self.cam_combo)
+        cam_row.addWidget(self.btn_refresh_cams)
+        cam_row.addStretch()
+        left_panel.addLayout(cam_row)
+        
+        self.cam_combo.currentIndexChanged.connect(self._update_camera_index)
+        
+        cam2_row = QHBoxLayout()
+        self.cam2_combo = QComboBox()
+        self.cam2_combo.setFixedHeight(42)
+        self.cam2_combo.setMinimumWidth(250)
+        self.cam2_combo.setStyleSheet(self.port_combo.styleSheet())
+        self.cam2_combo.currentIndexChanged.connect(self._update_camera2_index)
+        
+        cam2_row.addWidget(self.cam2_combo)
+        cam2_row.addStretch()
+        left_panel.addWidget(_section_label("Visão Dual (Câmera Secundária)"))
+        left_panel.addLayout(cam2_row)
+        
+        # Conexão EEG Portas combo... (continua)
         self.eeg_port_combo.setMinimumWidth(180)
         self.eeg_port_combo.setStyleSheet(self.port_combo.styleSheet())
         
@@ -1170,9 +1227,78 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.sidebar, 1)
         main_layout.addWidget(right_container, 3)
 
+        self._refresh_ports_combo()
+        self._refresh_camera_list()
         self._switch_tab(0)
 
     # ── Callbacks ─────────────────────────────────────────────── #
+    def _refresh_camera_list(self):
+        self.cam_combo.blockSignals(True)
+        self.cam2_combo.blockSignals(True)
+        self.cam_combo.clear()
+        self.cam2_combo.clear()
+        
+        from inputs.camera_input import CameraInput
+        available = CameraInput.list_cameras()
+        
+        saved_index = self.hub.config.get("camera_index", 0)
+        saved2_index = self.hub.config.get("camera2_index", 1)
+        found_saved = False
+        found2_saved = False
+        
+        for idx in available:
+            name = f"Câmera {idx}"
+            
+            self.cam_combo.addItem(name, idx)
+            self.cam2_combo.addItem(name, idx)
+            
+            if idx == saved_index:
+                self.cam_combo.setCurrentIndex(self.cam_combo.count() - 1)
+                found_saved = True
+            if idx == saved2_index:
+                self.cam2_combo.setCurrentIndex(self.cam2_combo.count() - 1)
+                found2_saved = True
+        
+        if not found_saved:
+            self.cam_combo.addItem(f"Câmera {saved_index} (DESCONECTADA)", saved_index)
+            self.cam_combo.setCurrentIndex(self.cam_combo.count() - 1)
+        if not found2_saved:
+            self.cam2_combo.addItem(f"Câmera {saved2_index} (DESCONECTADA)", saved2_index)
+            self.cam2_combo.setCurrentIndex(self.cam2_combo.count() - 1)
+            
+        self.cam_combo.blockSignals(False)
+        self.cam2_combo.blockSignals(False)
+
+    def _update_camera_index(self, index_ui):
+        new_idx = self.cam_combo.currentData()
+        if new_idx is not None:
+            # Se a câmera estiver rodando, o HubController vai reiniciar
+            is_active = self.btn_cam.isChecked()
+            self.hub.set_camera_active(is_active, index=new_idx)
+            self.update_status_bar(f"Fonte de vídeo alterada para ID: {new_idx}")
+
+    def _update_camera2_index(self):
+        new_idx = self.cam2_combo.currentData()
+        if new_idx is not None:
+            is_dual = self.hub.dual_vision_active
+            self.hub.set_dual_vision(is_dual, index=new_idx)
+            self.update_status_bar(f"Fonte secundária alterada para ID: {new_idx}")
+
+    def _handle_processed_frame(self, frame, source_id):
+        if source_id == 0:
+            self.video_display.update_frame(frame)
+        else:
+            self.video_display2.update_frame(frame)
+
+    def _toggle_dual_vision(self, checked):
+        if checked:
+            self.btn_dual_vision.setText("VISÃO DUAL: ON")
+            self.video_display2.setVisible(True)
+        else:
+            self.btn_dual_vision.setText("ATIVAR VISÃO DUAL")
+            self.video_display2.setVisible(False)
+        self.hub.set_dual_vision(checked)
+
     def _refresh_ports_combo(self):
         self.port_combo.blockSignals(True)
         self.eeg_port_combo.blockSignals(True)

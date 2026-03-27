@@ -10,7 +10,7 @@ from core.paths import resource_path
 
 class HandProcessor(QThread):
     prediction_signal = Signal(dict)
-    processed_frame_signal = Signal(object) # Envia frame com os pontos desenhados
+    processed_frame_signal = Signal(object, int) # Envia frame com pontos e ID da fonte
     fps_signal = Signal(float)
 
     def __init__(self, model_path="models/hand_landmarker.task"):
@@ -27,7 +27,9 @@ class HandProcessor(QThread):
         self.HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
         self.VisionRunningMode = mp.tasks.vision.RunningMode
         
-        self.detector = None
+        self.latest_predictions = {} # Memória de cada câmera {cam_id: prediction_data}
+        
+        # Mapeamento de dedos conforme main_fluido_v2.pyne
         
         # Índices para cada dedo conforme main_fluido_v2
         self.INDICES_DEDOS = {
@@ -37,10 +39,10 @@ class HandProcessor(QThread):
             'minimo':    {'mcp': (0, 17, 18), 'pip': (17, 18, 19), 'bit': 3}
         }
 
-    def process_frame(self, frame):
-        """Enfileira frame para processamento"""
+    def process_frame(self, frame, source_id=0):
+        """Enfileira frame para processamento com ID de origem"""
         if not self.frame_queue.full():
-            self.frame_queue.put(frame)
+            self.frame_queue.put((frame, source_id))
 
     def run(self):
         # Carrega o modelo como buffer para evitar problemas com caracteres especiais no caminho (ex: "Códigos")
@@ -59,13 +61,38 @@ class HandProcessor(QThread):
         self.detector = self.HandLandmarker.create_from_options(options)
 
         self.running = True
-        
         while self.running:
-            try:
-                frame = self.frame_queue.get(timeout=0.1)
-                self._analyze_frame(frame)
-            except queue.Empty:
-                continue
+            if not self.frame_queue.empty() and self.detector:
+                try:
+                    frame_data = self.frame_queue.get()
+                    if isinstance(frame_data, tuple):
+                        frame, source_id = frame_data
+                    else:
+                        frame, source_id = frame_data, 0
+                    
+                    prediction_data, processed_frame = self._analyze_frame(frame)
+                    
+                    if not self.running: break # Interromper se parou durante análise
+                    
+                    # Emite o frame processado com sua origem
+                    self.processed_frame_signal.emit(processed_frame, source_id)
+                    
+                    # Salva na memória e funde resultados
+                    if prediction_data:
+                        prediction_data["cam_id"] = source_id 
+                        self.latest_predictions[source_id] = prediction_data
+                        
+                        # Realiza a fusão de todas as câmeras ativas
+                        fused_data = self._fuse_predictions()
+                        if fused_data:
+                            self.prediction_signal.emit(fused_data)
+                except RuntimeError:
+                    # Ocorre quando o MediaPipe fecha o pool antes do loop terminar
+                    break
+                except Exception as e:
+                    print(f"DEBUG HAND_PROCESSOR ERROR: {e}")
+            else:
+                time.sleep(0.01)
         
         if self.detector:
             self.detector.close()
@@ -140,16 +167,16 @@ class HandProcessor(QThread):
         # O ID deve ser limitado a 0-15 se o polegar não for usado nas imagens
         display_id = gesture_id % 16 if gesture_id >= 0 else -1
         
-        # Emitir o frame processado com os pontos desenhados
-        self.processed_frame_signal.emit(processed_frame)
-
-        self.prediction_signal.emit({
+        # Retornar dados para o loop principal emitir
+        prediction = {
             "prediction": self._get_gesture_name(display_id),
             "gesture_id": display_id,
             "confidence": confidence,
             "fingers": fingers_state,
             "timestamp": time.time()
-        })
+        }
+        
+        return prediction, processed_frame
 
     def calcular_angulo(self, a, b, c):
         a, b, c = np.array(a), np.array(b), np.array(c)
@@ -164,3 +191,62 @@ class HandProcessor(QThread):
         if gid == 15: return "MÃO ABERTA"
         if gid == 0: return "PUNHO FECHADO"
         return f"GESTO {gid}"
+
+    def _fuse_predictions(self):
+        """Funde predições de múltiplas câmeras em uma única estável"""
+        if not self.latest_predictions:
+            return None
+            
+        # Limpar predições muito antigas (> 200ms) para evitar fantasmas
+        now = time.time()
+        active_sources = [sid for sid, data in self.latest_predictions.items() if now - data["timestamp"] < 0.2]
+        
+        if not active_sources:
+            return {
+                "prediction": "SEM MÃO",
+                "gesture_id": -1,
+                "confidence": 0,
+                "fingers": {},
+                "source": "FUSION",
+                "timestamp": now
+            }
+            
+        # Se só tem um canal ativo, usa ele direto mas marca como FUSION
+        if len(active_sources) == 1:
+            fused = self.latest_predictions[active_sources[0]].copy()
+            fused["source"] = "FUSION"
+            return fused
+
+        # Fusão Multi-Câmera (Lógica: Dedo a Dedo Max-Angle)
+        fused_fingers = {}
+        target_keys = ["polegar", "indicador", "medio", "anelar", "minimo"]
+        
+        for key in target_keys:
+            vals = [self.latest_predictions[sid]["fingers"].get(key, 0) for sid in active_sources]
+            fused_fingers[key] = max(vals) # Pega o ângulo mais aberto
+
+        # Recalcular Gesture ID a partir dos dedos fundidos
+        # A lógica de bit do _analyze_frame:
+        # bit 0: indicador, bit 1: médio, bit 2: anelar, bit 3: mínimo
+        # Bit 4: polegar (opcional, mapeamos para ID 16+)
+        
+        new_gid = 0
+        if fused_fingers.get("indicador", 0) > 125: new_gid += 1
+        if fused_fingers.get("medio", 0) > 125: new_gid += 2
+        if fused_fingers.get("anelar", 0) > 125: new_gid += 4
+        if fused_fingers.get("minimo", 0) > 125: new_gid += 8
+        
+        # Polegar (ratio > 0.6 em ratio * 100 -> 60)
+        if fused_fingers.get("polegar", 0) > 60: new_gid += 16
+
+        display_id = new_gid % 16 # Mantendo compatibilidade com imagens 0-15
+        
+        return {
+            "prediction": self._get_gesture_name(display_id),
+            "gesture_id": display_id,
+            "confidence": 99,
+            "fingers": fused_fingers,
+            "source": "FUSION",
+            "timestamp": now
+        }
+
