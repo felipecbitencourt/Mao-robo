@@ -888,7 +888,7 @@ class MainWindow(QMainWindow):
         cm_lyt.setSpacing(6)
 
         custom_wave_defs = [
-            ("Foco Real (Beta/Alpha)", "#EF4444", "foco_real"),
+            ("Foco Real (β / espectro total)", "#EF4444", "foco_real"),
             ("Relaxamento Real (Alpha/Beta)", "#3B82F6", "relaxamento_real"),
             ("Sonolência (Theta/Alpha)", "#8B5CF6", "sonolencia"),
             ("Engajamento (Beta/(Alpha+Theta))", "#F59E0B", "engajamento"),
@@ -946,7 +946,7 @@ class MainWindow(QMainWindow):
         self.rb_none = QRadioButton("Mudo (Leitura Pura)")
         self.rb_attn = QRadioButton("Foco Concentrado (>60)")
         self.rb_med = QRadioButton("Transe/Meditação (>60)")
-        self.rb_custom_focus = QRadioButton("Foco Real (Proporcional)")
+        self.rb_custom_focus = QRadioButton("Foco Real (β relativo ao espectro)")
         for rb in [self.rb_none, self.rb_attn, self.rb_med, self.rb_custom_focus]:
             self.mode_group.addButton(rb)
             cp_inner.addWidget(rb)
@@ -1139,6 +1139,25 @@ class MainWindow(QMainWindow):
         cam_row.addWidget(self.btn_refresh_cams)
         cam_row.addStretch()
         left_panel.addLayout(cam_row)
+
+        cam_backend_row = QHBoxLayout()
+        lbl_backend = QLabel("Driver de vídeo:")
+        lbl_backend.setStyleSheet(f"color:{t['text_dim']}; font-size:12px;")
+        self.cam_backend_combo = QComboBox()
+        self.cam_backend_combo.setFixedHeight(36)
+        self.cam_backend_combo.setMinimumWidth(220)
+        self.cam_backend_combo.setStyleSheet(self.port_combo.styleSheet())
+        self.cam_backend_combo.addItem("DirectShow (padrão)", "dshow")
+        self.cam_backend_combo.addItem("Media Foundation (MSMF)", "msmf")
+        self.cam_backend_combo.blockSignals(True)
+        _saved_backend = str(self.hub.config.get("camera_backend", "dshow")).lower()
+        self.cam_backend_combo.setCurrentIndex(1 if _saved_backend == "msmf" else 0)
+        self.cam_backend_combo.blockSignals(False)
+        self.cam_backend_combo.currentIndexChanged.connect(self._on_camera_backend_changed)
+        cam_backend_row.addWidget(lbl_backend)
+        cam_backend_row.addWidget(self.cam_backend_combo)
+        cam_backend_row.addStretch()
+        left_panel.addLayout(cam_backend_row)
         
         self.cam_combo.currentIndexChanged.connect(self._update_camera_index)
         
@@ -1232,6 +1251,18 @@ class MainWindow(QMainWindow):
         self._switch_tab(0)
 
     # ── Callbacks ─────────────────────────────────────────────── #
+    def _on_camera_backend_changed(self):
+        b = self.cam_backend_combo.currentData()
+        if b is not None:
+            self.hub.config.set("camera_backend", b)
+        self._refresh_camera_list()
+        if self.btn_cam.isChecked():
+            self.hub.set_camera_active(False)
+            self.hub.set_camera_active(True)
+        if self.hub.dual_vision_active:
+            self.hub.set_dual_vision(False)
+            self.hub.set_dual_vision(True)
+
     def _refresh_camera_list(self):
         self.cam_combo.blockSignals(True)
         self.cam2_combo.blockSignals(True)
@@ -1239,16 +1270,19 @@ class MainWindow(QMainWindow):
         self.cam2_combo.clear()
         
         from inputs.camera_input import CameraInput
-        available = CameraInput.list_cameras()
+        backend = (
+            self.cam_backend_combo.currentData()
+            if hasattr(self, "cam_backend_combo")
+            else self.hub.config.get("camera_backend", "dshow")
+        )
+        available = CameraInput.list_cameras(backend=backend)
         
         saved_index = self.hub.config.get("camera_index", 0)
         saved2_index = self.hub.config.get("camera2_index", 1)
         found_saved = False
         found2_saved = False
         
-        for idx in available:
-            name = f"Câmera {idx}"
-            
+        for idx, name in available:
             self.cam_combo.addItem(name, idx)
             self.cam2_combo.addItem(name, idx)
             

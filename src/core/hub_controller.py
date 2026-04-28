@@ -104,7 +104,10 @@ class HubController(QObject):
 
         if active:
             if not self.camera:
-                self.camera = CameraInput(camera_index=self.camera_index)
+                backend = self.config.get("camera_backend", "dshow")
+                self.camera = CameraInput(
+                    camera_index=self.camera_index, backend=backend
+                )
                 self.camera.frame_signal.connect(lambda f: self.processor.process_frame(f, 0))
             self.camera.start()
             self.processor.start() # Sempre ligar processador se houver câmera
@@ -126,7 +129,10 @@ class HubController(QObject):
         self.dual_vision_active = active
         if active:
             if not self.camera2:
-                self.camera2 = CameraInput(camera_index=self.camera2_index)
+                backend = self.config.get("camera_backend", "dshow")
+                self.camera2 = CameraInput(
+                    camera_index=self.camera2_index, backend=backend
+                )
                 self.camera2.frame_signal.connect(lambda f: self.processor.process_frame(f, 1))
             self.camera2.start()
             self.status_signal.emit(f"Visão Dual ATIVADA (Câmera 2 Índice: {self.camera2_index})")
@@ -439,18 +445,26 @@ class HubController(QObject):
         
         # Calcula métricas customizadas a partir das 8 bandas brutas
         waves = data.get("waves", {})
+        delta = waves.get("delta", 0)
+        theta = waves.get("theta", 0)
         low_alpha = waves.get("low_alpha", 0)
         high_alpha = waves.get("high_alpha", 0)
         low_beta = waves.get("low_beta", 0)
         high_beta = waves.get("high_beta", 0)
-        theta = waves.get("theta", 0)
+        low_gamma = waves.get("low_gamma", 0)
+        high_gamma = waves.get("high_gamma", 0)
         
         alpha_sum = low_alpha + high_alpha
         beta_sum = low_beta + high_beta
+        total_power = (
+            delta + theta + low_alpha + high_alpha
+            + low_beta + high_beta + low_gamma + high_gamma
+        )
         
         # Métricas customizadas brutas (divisão segura)
+        # foco_real (F1): fração beta no espectro reportado (0–100 %)
         raw_metrics = {
-            "foco_real": min(100, (beta_sum / max(1, alpha_sum)) * 25),
+            "foco_real": min(100.0, (beta_sum / max(1, total_power)) * 100.0),
             "relaxamento_real": min(100, (alpha_sum / max(1, beta_sum)) * 25),
             "sonolencia": min(100, (theta / max(1, low_alpha)) * 25),
             "engajamento": min(100, (beta_sum / max(1, alpha_sum + theta)) * 25),

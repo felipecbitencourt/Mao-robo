@@ -8,3 +8,4 @@ uvicorn
 pyserial
 numpy
 PySide6
+pygrabber

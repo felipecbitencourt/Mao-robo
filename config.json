@@ -52,6 +52,8 @@
     ],
     "eeg_gain": 5.0,
     "eeg_smoothing": 0.1999999999999999,
-    "camera_index": 1,
-    "camera2_index": 0
+    "camera_index": 0,
+    "camera2_index": 1,
+    "eeg_port": "COM10",
+    "camera_backend": "msmf"
 }

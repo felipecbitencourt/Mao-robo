@@ -16,7 +16,10 @@ hiddenimports = [
     'mediapipe',
     'serial',
     'cv2',
-    'numpy'
+    'numpy',
+    'pygrabber',
+    'pygrabber.dshow_graph',
+    'comtypes',
 ]
 
 # Captura hooks inteiros do PySide6 e MediaPipe
