@@ -1,0 +1,47 @@
+# ============ Python ============
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ============ PyInstaller (saida de build) ============
+build/
+dist/
+*.manifest
+
+# ============ Visual Studio / MSVC (SDK da luva) ============
+.vs/
+[Dd]ebug/
+[Rr]elease/
+x64/
+bin/
+obj/
+Backup/
+*.pdb
+*.ipch
+*.obj
+*.tlog
+*.suo
+*.opendb
+*.VC.db
+*.VC.db-*
+UpgradeLog*.htm
+
+# ============ IDEs ============
+.vscode/
+.idea/
+
+# ============ Sistema operacional ============
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============ Logs e temporarios ============
+*.log
+*.tmp
+
+# Modelos duplicados na lixeira (originais em models/)
+lixeira/dist/*.task
