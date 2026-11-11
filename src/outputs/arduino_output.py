@@ -5,6 +5,8 @@ from PySide6.QtCore import QObject, Signal
 
 from PySide6.QtCore import QObject, Signal, QThread
 
+from core.ports import is_arduino_port_description, is_eeg_port_description
+
 # Fix para pyfirmata em Python 3.13+
 if not hasattr(inspect, 'getargspec'):
     inspect.getargspec = inspect.getfullargspec
@@ -146,13 +148,16 @@ class ArduinoOutput(QObject):
         
         ports_to_try = [self.port] if self.port else []
         if auto_scan:
-            # Prioriza portas que pareçam ser Arduino/CH340
+            # Só tenta portas que pareçam Arduino/USB-serial. Abrir o Firmata numa
+            # porta Bluetooth (ex.: a tiara EEG) pode travar por vários segundos.
+            ports_to_try = []
             for p in available:
-                if p.device != self.port:
-                    if "arduino" in p.description.lower() or "ch340" in p.description.lower() or "usb-serial" in p.description.lower():
-                        ports_to_try.insert(0, p.device)
-                    else:
-                        ports_to_try.append(p.device)
+                if is_arduino_port_description(p.description):
+                    ports_to_try.append(p.device)
+            # A porta salva entra por último, se não for claramente Bluetooth
+            saved = next((p for p in available if p.device == self.port), None)
+            if saved and saved.device not in ports_to_try and not is_eeg_port_description(saved.description):
+                ports_to_try.append(saved.device)
         
         for port in ports_to_try:
             try:
@@ -202,36 +207,25 @@ class ArduinoOutput(QObject):
             self._write(pino, nova_pos)
             self.posicao_atual[pino] = nova_pos
 
-    def mapear_angulo_para_servo(self, angulo, pino):
-        """Mapeia ângulo do dedo (0-180) para pwm do servo"""
+    def posicao_para_abertura(self, pino, abertura):
+        """Abertura 0..1 (0 = fechado, 1 = aberto) para a posição do servo."""
         max_servo = self.VALORES_FECHADOS.get(pino, 140)
-        angulo_normalizado = (angulo - 60) / 120  # 60-180 -> 0-1
-        angulo_normalizado = max(0, min(1, angulo_normalizado))
-        posicao = max_servo * (1 - angulo_normalizado)
-        return posicao
+        abertura = max(0.0, min(1.0, float(abertura)))
+        return max_servo * (1.0 - abertura)
 
-    def send_hand_command(self, gesture_id, fingers_data=None):
-        """Envia comando de gesto ou posições fluidas para a mão"""
+    def send_hand_command(self, gesture_id, opening=None):
+        """Envia a abertura de cada dedo (modo fluido) ou um gesto discreto"""
         if not self.board or not self.active:
             return
 
-        # Se os dados proporcionais dos dedos estiverem disponíveis (Modo Fluido)
-        if fingers_data and isinstance(fingers_data, dict) and 'polegar' in fingers_data:
-            # Polegar (recebe ratio * 100 de 0 a 100+)
-            ratio_polegar = fingers_data.get('polegar', 100) / 100.0
-            polegar_pos = self.VALORES_FECHADOS[10] * (1 - max(0, min(1, (ratio_polegar - 0.5) / 0.8)))
-            self.mover_servo_suave(10, polegar_pos)
-            
-            # Demais dedos
-            for nome_dedo, angulo in fingers_data.items():
-                if nome_dedo == 'polegar': continue
-                
+        # Modo fluido: abertura 0..1 por dedo (ver processing/finger_scale.py)
+        if opening:
+            for nome_dedo, abertura in opening.items():
                 pino = self.pin_map.get(nome_dedo)
-                if pino:
-                    pos_alvo = self.mapear_angulo_para_servo(angulo, pino)
-                    self.mover_servo_suave(pino, pos_alvo)
+                if pino is not None:
+                    self.mover_servo_suave(pino, self.posicao_para_abertura(pino, abertura))
             return
-            
+
         print(f"DEBUG ARDUINO: Enviando Gesto ID {gesture_id} para a mão (Modo Binário)...")
 
         # Para fins de simplificação neste Hub:

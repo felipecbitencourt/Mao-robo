@@ -1,3 +1,4 @@
+import threading
 import time
 from PySide6.QtCore import QObject, Signal, QThread
 import os
@@ -5,7 +6,9 @@ from inputs.camera_input import CameraInput
 from inputs.glove_input import GloveInput
 from inputs.eeg_input import EEGInput
 from processing.hand_processor import HandProcessor
+from processing.finger_scale import glove_opening, legacy_from_opening, opening_from_legacy
 from outputs.arduino_output import ArduinoOutput
+from core.ports import is_eeg_port_description
 from core.config_manager import ConfigManager
 
 class HubController(QObject):
@@ -224,39 +227,16 @@ class HubController(QObject):
         gid = data.get("gesture_id", -1)
         fingers_data = None
         
-        # Mapeamento Dinâmico Fluido direto dos sensores nativos para ângulos do Arduino!
-        if len(sensors) >= 5:
-            # Se tivermos calibração clínica (18 thresholds), usamos para normalizar os 5 principais
-            if len(self.clinical_thresholds) >= 5:
-                # Normalização Binária/Suave baseada no threshold clínico
-                # Se acima do threshold (FECHADO), se abaixo (ABERTO)
-                # Para o motor, 1.0 é aberto, 0.0 é fechado. 
-                # sensors[i] >= threshold -> fechado (0.0)
-                # sensors[i] < threshold -> aberto (1.0)
-                s0 = 0.0 if sensors[0] >= self.clinical_thresholds[0] else 1.0
-                s1 = 0.0 if sensors[1] >= self.clinical_thresholds[1] else 1.0
-                s2 = 0.0 if sensors[2] >= self.clinical_thresholds[2] else 1.0
-                s3 = 0.0 if sensors[3] >= self.clinical_thresholds[3] else 1.0
-                s4 = 0.0 if sensors[4] >= self.clinical_thresholds[4] else 1.0
-            else:
-                # Multiplicador Dinâmico Sensível (fallback)
-                s0 = max(0.0, min(1.0, sensors[0] * self.glove_weights[0]))
-                s1 = max(0.0, min(1.0, sensors[1] * self.glove_weights[1]))
-                s2 = max(0.0, min(1.0, sensors[2] * self.glove_weights[2]))
-                s3 = max(0.0, min(1.0, sensors[3] * self.glove_weights[3]))
-                s4 = max(0.0, min(1.0, sensors[4] * self.glove_weights[4]))
-            
-            # Inversão Físico-Robótica: 1.0 da luva (Aberto) mapeia para 60º na Garra
+        # Abertura de cada dedo a partir dos sensores de flexão da luva
+        # (ver processing/finger_scale.py para a ordem dos 18 sensores)
+        if len(sensors) >= 14:
+            opening = glove_opening(
+                sensors,
+                weights=self.glove_weights,
+                thresholds=self.clinical_thresholds,
+            )
+            fingers_data = legacy_from_opening(opening)
 
-            # 0.0 da luva (Fechado) mapeia para 180º ou 100% no Polegar
-            fingers_data = {
-                'polegar': (1.0 - s0) * 100.0,
-                'indicador': 180 - (s1 * 120),
-                'medio': 180 - (s2 * 120),
-                'anelar': 180 - (s3 * 120),
-                'minimo': 180 - (s4 * 120)
-            }
-        
         # Se tivermos calibração, tratamos de forma contínua ou por distância
         if self.calibrated_vectors:
             gid = self._classify_by_distance(sensors)
@@ -353,61 +333,6 @@ class HubController(QObject):
         self.clinical_max_buffer = []
         self.clinical_min_buffer = []
         return True
-
-    def _calculate_fluid_fingers(self, sensors):
-        FINGER_MAP = {
-            'polegar': [0, 1, 2],
-            'indicador': [3, 4, 5],
-            'medio': [6, 7, 8],
-            'anelar': [9, 10, 11],
-            'minimo': [12, 13, 14]
-        }
-        
-        c_closed = self.calibrated_vectors.get('CLOSED', [])
-        c_half = self.calibrated_vectors.get('HALF', [])
-        c_open = self.calibrated_vectors.get('OPEN', [])
-        
-        fingers_out = {}
-        for nome_dedo, indices in FINGER_MAP.items():
-            perc_list = []
-            for idx in indices:
-                if idx < len(sensors) and idx < len(c_closed) and idx < len(c_half) and idx < len(c_open):
-                    v = sensors[idx]
-                    p = self._interpolate_sensor(v, c_closed[idx], c_half[idx], c_open[idx])
-                    perc_list.append(p)
-            
-            if perc_list:
-                avg_perc = sum(perc_list) / len(perc_list)
-                if nome_dedo == 'polegar':
-                    # Mapeia 0.0-1.0 para 50 (fechado) a 130 (aberto)
-                    fingers_out[nome_dedo] = 50 + (avg_perc * 80)
-                else:
-                    # Mapeia 0.0-1.0 para angulo 60 (fechado) a 180 (aberto)
-                    fingers_out[nome_dedo] = 60 + (avg_perc * 120)
-
-        return fingers_out
-
-    def _interpolate_sensor(self, value, c_closed, c_half, c_open):
-        """Mapeia interpolação em 3 pontos para porcentagem de abertura"""
-        if c_closed == c_open: return 0.5
-        is_increasing = c_open > c_closed 
-        
-        if is_increasing:
-            if value <= c_closed: return 0.0
-            if value >= c_open: return 1.0
-            if value <= c_half and c_half != c_closed:
-                return 0.0 + 0.5 * (value - c_closed) / (c_half - c_closed)
-            elif c_open != c_half:
-                return 0.5 + 0.5 * (value - c_half) / (c_open - c_half)
-            else: return 0.5
-        else:
-            if value >= c_closed: return 0.0
-            if value <= c_open: return 1.0
-            if value >= c_half and c_half != c_closed:
-                return 0.0 + 0.5 * (value - c_closed) / (c_half - c_closed)
-            elif c_open != c_half:
-                return 0.5 + 0.5 * (value - c_half) / (c_open - c_half)
-            else: return 0.5
 
     def _classify_by_distance(self, sensors):
         """Classifica o gesto baseado na menor distância euclidiana para os vetores calibrados"""
@@ -571,6 +496,10 @@ class HubController(QObject):
             if data.get("timestamp") is None:
                 data["timestamp"] = now
 
+            # Escala única: abertura de cada dedo (0 = fechado, 1 = aberto)
+            if data.get("fingers"):
+                data["opening"] = opening_from_legacy(data["fingers"])
+
             # Lógica de Prioridade:
             # Se recebemos um gesto VÁLIDO (gid != -1), ele sempre tem precedência.
             # Se recebemos um gesto INVÁLIDO (-1), só aceitamos se não houver um gesto válido recente de OUTRA fonte.
@@ -598,43 +527,57 @@ class HubController(QObject):
             if should_emit:
                 self.prediction_signal.emit(data)
                 
-                # Controle do Arduino
+                # Controle do Arduino (sempre em abertura 0..1)
                 if self.arduino.active and gid != -1:
-                    self.arduino.send_hand_command(gid, fingers_data=data.get("fingers"))
+                    self.arduino.send_hand_command(gid, opening=data.get("opening"))
         except Exception as e:
             print(f"!!! ERRO NO DISPATCH: {str(e)}")
             import traceback
             traceback.print_exc()
 
     def auto_detect_all_ports(self):
-        """Varre o sistema em busca de Arduino e BrainLink (Sincrono para evitar race conditions)"""
+        """Varre o sistema em busca de Arduino e BrainLink numa thread separada.
+
+        Abrir portas seriais (sobretudo Bluetooth) pode levar vários segundos,
+        então a varredura não pode rodar na thread da interface. O resultado
+        chega pelos sinais status_signal e discovery_finished_signal."""
+        if getattr(self, "_discovery_thread", None) and self._discovery_thread.is_alive():
+            self.status_signal.emit("Auto-detecção já em andamento...")
+            return
         self.status_signal.emit("Auto-detectando dispositivos...")
-        
-        # 1. Arduino
-        success_arduino = self.arduino.connect(auto_scan=True)
-        if success_arduino:
-            self.config.set("arduino_port", self.arduino.port)
-            self.status_signal.emit(f"Arduino na porta {self.arduino.port}")
-        
-        # 2. EEG
-        import serial.tools.list_ports
-        for p in serial.tools.list_ports.comports():
-            p_desc = p.description.lower()
-            if "brainlink" in p_desc or "bluetooth" in p_desc or "mindwave" in p_desc:
-                self.config.set("eeg_port", p.device)
-                self.status_signal.emit(f"Porta EEG detectada: {p.device}")
-                break
-        
-        self.status_signal.emit("Auto-detecção finalizada.")
-        self.discovery_finished_signal.emit(True)
+        self._discovery_thread = threading.Thread(target=self._auto_detect_worker, daemon=True)
+        self._discovery_thread.start()
+
+    def _auto_detect_worker(self):
+        found_any = False
+        try:
+            # 1. Arduino (só portas USB-serial; Bluetooth fica de fora)
+            if self.arduino.connect(auto_scan=True):
+                self.config.set("arduino_port", self.arduino.port)
+                self.status_signal.emit(f"Arduino na porta {self.arduino.port}")
+                found_any = True
+
+            # 2. EEG
+            import serial.tools.list_ports
+            for p in serial.tools.list_ports.comports():
+                if p.device == self.arduino.port and self.arduino.board:
+                    continue
+                if is_eeg_port_description(p.description):
+                    self.config.set("eeg_port", p.device)
+                    self.status_signal.emit(f"Porta EEG detectada: {p.device}")
+                    found_any = True
+                    break
+        except Exception as e:
+            self.status_signal.emit(f"Erro na auto-detecção: {e}")
+        finally:
+            self.status_signal.emit("Auto-detecção finalizada.")
+            self.discovery_finished_signal.emit(found_any)
 
     def set_glove_weight(self, index, weight):
         """Ajusta do multiplicador de calibração em tempo de execução"""
         if 0 <= index < 5:
             self.glove_weights[index] = weight
             self.config.set("glove_weights", self.glove_weights)
-        else:
-            self.status_signal.emit("Auto-detecção completa (verifique Arduino).")
 
 
     def start(self):

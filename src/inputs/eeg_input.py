@@ -1,6 +1,7 @@
 from PySide6.QtCore import QThread, Signal
 import time
 from hardware.eeg_brainlink import BrainLinkEEG, BrainLinkData
+from core.ports import is_eeg_port_description
 
 class EEGInput(QThread):
     data_signal = Signal(dict)
@@ -59,7 +60,7 @@ class EEGInput(QThread):
             for p in available:
                 if p.device != self.port:
                     p_desc = p.description.lower()
-                    if "bluetooth" in p_desc or "brainlink" in p_desc or "mindwave" in p_desc:
+                    if is_eeg_port_description(p_desc):
                         ports_to_try.insert(0, p.device)
                     elif "usb-serial" in p_desc or "ch340" in p_desc:
                          # Fallback para adaptadores USB
