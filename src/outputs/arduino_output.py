@@ -1,4 +1,5 @@
 import inspect
+import threading
 import time
 from PySide6.QtCore import QObject, Signal
 
@@ -22,23 +23,36 @@ class TestThread(QThread):
         if not self.output_obj.board:
             return
             
-        self.output_obj.status_signal.emit("Iniciando sequência de teste...")
-        pins = self.output_obj.pins # [10, 9, 8, 7, 6]
-        
+        out = self.output_obj
+        out.status_signal.emit("Iniciando sequência de teste...")
+        pins = out.pins # [10, 9, 8, 7, 6]
+
+        def pause(seconds):
+            # Dorme em passos curtos para a parada de emergência interromper o teste
+            end = time.time() + seconds
+            while time.time() < end:
+                if out._abort_test.is_set():
+                    return False
+                time.sleep(0.05)
+            return True
+
         # Abre todos
         for pin in pins:
-            self.output_obj.board.digital[pin].write(0)
-        time.sleep(1)
-        
+            out._write(pin, 0)
+        if not pause(1):
+            return
+
         # Testa um por um como no script testar-dedos.py
         test_values = [150, 180, 180, 180, 130] # Valores para cada pino
         for i, pin in enumerate(pins):
-            self.output_obj.board.digital[pin].write(test_values[i])
-            time.sleep(1)
-            self.output_obj.board.digital[pin].write(0)
-            time.sleep(1)
-            
-        self.output_obj.status_signal.emit("Teste de servos finalizado")
+            out._write(pin, test_values[i])
+            if not pause(1):
+                return
+            out._write(pin, 0)
+            if not pause(1):
+                return
+
+        out.status_signal.emit("Teste de servos finalizado")
 
 class ArduinoOutput(QObject):
     status_signal = Signal(str)
@@ -73,6 +87,40 @@ class ArduinoOutput(QObject):
         self.posicao_atual = {pin: 0 for pin in self.pins}
         
         self._available_ports = []
+
+        # Escritas na serial vêm da thread principal e da thread de teste
+        self._lock = threading.Lock()
+        self._abort_test = threading.Event()
+
+    # Posição segura: mão aberta (mesmo valor usado pelo gesto "MÃO ABERTA")
+    SAFE_POSITION = 0
+
+    def _write(self, pin, value):
+        board = self.board
+        if not board:
+            return
+        with self._lock:
+            board.digital[pin].write(value)
+
+    def safe_stop(self):
+        """Parada de emergência: corta o envio, interrompe o teste e leva os
+        servos para a posição segura (mão aberta). Funciona mesmo com a saída
+        desativada, desde que a placa esteja conectada."""
+        self.active = False
+        self._abort_test.set()
+        if self.test_worker is not None and self.test_worker.isRunning():
+            self.test_worker.wait(1000)
+        if not self.board:
+            return False
+        try:
+            for pin in self.pins:
+                self._write(pin, self.SAFE_POSITION)
+                self.posicao_atual[pin] = self.SAFE_POSITION
+            self.status_signal.emit("Motores parados (mão aberta)")
+            return True
+        except Exception as e:
+            self.status_signal.emit(f"Falha ao parar motores: {e}")
+            return False
 
     @staticmethod
     def list_available_ports():
@@ -132,6 +180,7 @@ class ArduinoOutput(QObject):
         """Dispara a thread de teste"""
         if self.board:
             print("DEBUG ARDUINO: Iniciando worker de teste...")
+            self._abort_test.clear()
             self.test_worker = TestThread(self)
             self.test_worker.start()
         else:
@@ -150,7 +199,7 @@ class ArduinoOutput(QObject):
         
         # Move se a diferença for significativa para evitar jitter
         if abs(nova_pos - self.posicao_atual[pino]) >= 1:
-            self.board.digital[pino].write(nova_pos)
+            self._write(pino, nova_pos)
             self.posicao_atual[pino] = nova_pos
 
     def mapear_angulo_para_servo(self, angulo, pino):
@@ -192,21 +241,22 @@ class ArduinoOutput(QObject):
         
         if gesture_id in [15, 22]: # ABERTA ou BEM ABERTA
             for pin in self.pins:
-                self.board.digital[pin].write(0)
+                self._write(pin, 0)
         elif gesture_id in [0, 20]: # FECHADA ou BEM FECHADA
             for pin in self.pins:
                 val = self.VALORES_FECHADOS.get(pin, 140)
-                self.board.digital[pin].write(val)
+                self._write(pin, val)
         elif gesture_id == 21: # MEIO ABERTA (RELAXADA)
             for pin in self.pins:
                 target = self.VALORES_FECHADOS.get(pin, 140)
-                self.board.digital[pin].write(int(target * 0.5)) # Posição intermediária
+                self._write(pin, int(target * 0.5)) # Posição intermediária
         
         # Opcional: Para gestos parciais (ex: ID 1, 2, 4, 8), 
         # poderíamos mover dedos específicos usando bits.
 
     def disconnect(self):
         if self.board:
-            self.board.exit()
-            self.board = None
+            with self._lock:
+                board, self.board = self.board, None
+                board.exit()
             self.status_signal.emit("Arduino desconectado")

@@ -90,6 +90,10 @@ class HubController(QObject):
             print("DEBUG HUB: Desativando saída robótica.")
             self.status_signal.emit("Saída Robótica DESATIVADA")
 
+    def stop_motors(self):
+        """Parada de emergência dos servos, sem desligar as entradas."""
+        return self.arduino.safe_stop()
+
     def test_arduino_hand(self):
         """Aciona a sequência de teste de servos no hardware"""
         if self.arduino:
@@ -659,7 +663,7 @@ class HubController(QObject):
         self.processor.stop()
 
         try:
-            self.arduino.active = False
+            self.arduino.safe_stop()
             self.arduino.disconnect()
         except Exception as e:
             print(f"[Hub] Erro ao desconectar Arduino: {e}")
