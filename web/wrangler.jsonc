@@ -1,0 +1,13 @@
+{
+  // Site estático servido pelo Cloudflare Workers (assets estáticos, sem código de servidor).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mao-robo",
+  "compatibility_date": "2025-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    { "pattern": "mao.cienciaberta.com", "custom_domain": true }
+  ]
+}

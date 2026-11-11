@@ -1,84 +1,26 @@
+"""
+Botões legados mantidos por compatibilidade.
+
+O visual agora vem da folha de estilo global (ui/theme.py); estas
+classes só marcam a variante certa.
+"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton
 
 
 class AnimatedButton(QPushButton):
-    def __init__(self, text, parent=None, accent_color="#E94560"):
+    def __init__(self, text, parent=None, accent_color=None):
         super().__init__(text, parent)
-        self._accent_color = accent_color
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(44)
-        self._update_style(checked=False)
+        self.setProperty("variant", "ghost")
 
     def _update_style(self, checked: bool):
-        if checked:
-            self.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: rgba(30, 30, 52, 0.85);
-                    color: #E0E0FF;
-                    border: 1px solid {self._accent_color};
-                    border-left: 3px solid {self._accent_color};
-                    border-radius: 8px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    padding-left: 10px;
-                    text-align: left;
-                }}
-            """)
-        else:
-            self.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: transparent;
-                    color: #6666AA;
-                    border: 1px solid #1E1E34;
-                    border-left: 3px solid #1E1E34;
-                    border-radius: 8px;
-                    font-weight: bold;
-                    font-size: 13px;
-                    padding-left: 10px;
-                    text-align: left;
-                }}
-                QPushButton:hover {{
-                    background-color: #161624;
-                    border: 1px solid #2A2A44;
-                    border-left: 3px solid {self._accent_color};
-                    color: #AAAACC;
-                }}
-            """)
-
-    def enterEvent(self, event):
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        super().leaveEvent(event)
+        pass
 
 
 class ActionButton(QPushButton):
-    """Botão de ação principal (INICIAR/PARAR) com destaque tátil."""
-    def __init__(self, text, color="#E94560", parent=None):
+    """Botão de ação principal."""
+    def __init__(self, text, color=None, parent=None, variant="primary"):
         super().__init__(text, parent)
-        self._color = color
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(46)
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {color};
-                color: #FFFFFF;
-                border: none;
-                border-bottom: 3px solid rgba(0, 0, 0, 0.3);
-                border-radius: 8px;
-                font-size: 12px;
-                font-weight: bold;
-                letter-spacing: 1px;
-                padding: 10px 24px;
-            }}
-            QPushButton:hover {{
-                background-color: {color}E6;
-            }}
-            QPushButton:pressed {{
-                background-color: {color}CC;
-                border-bottom: 0px solid rgba(0, 0, 0, 0.3);
-                padding-top: 13px;       /* Desloca o texto pra baixo simulando a física */
-                padding-bottom: 7px;
-            }}
-        """)
+        self.setProperty("variant", variant)

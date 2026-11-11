@@ -1,45 +1,38 @@
 import os
 from PySide6.QtWidgets import QLabel
-from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtGui import QPixmap
 from PySide6.QtCore import Qt
 
 from core.paths import resource_path
 
+
 class GestureDisplay(QLabel):
-    def __init__(self, images_path="src/luva/gesture-images"):
+    """Miniatura ilustrativa do gesto reconhecido."""
+
+    def __init__(self, images_path="src/luva/gesture-images", size=250):
         super().__init__()
         self.images_path = resource_path(images_path)
+        self.setObjectName("gesture_img")
         self.setAlignment(Qt.AlignCenter)
-        self.setFixedSize(250, 250)
-        self.setStyleSheet("""
-            background-color: #0C0C14;
-            border: 1px solid #1E1E34;
-            border-radius: 12px;
-            color: #505068;
-            font-size: 11px;
-            font-weight: bold;
-            letter-spacing: 1px;
-        """)
-        self.setText("AGUARDANDO\nGESTO")
+        self.setFixedSize(size, size)
+        self.setText("Sem gesto")
 
     def update_gesture(self, gesture_id):
-        """Carrega e exibe a imagem correspondente ao gesto_id"""
+        """Carrega e exibe a imagem correspondente ao gesture_id"""
         if gesture_id == -1:
-            self.setText("SEM MÃO")
-            self.setPixmap(QPixmap()) # Limpa se nenhuma mão detectada
+            self.setPixmap(QPixmap())
+            self.setText("Sem mão")
             return
 
-        # Busca pelo arquivo .png
-        img_name = f"{gesture_id}.png"
-        img_path = os.path.join(self.images_path, img_name)
-        
+        img_path = os.path.join(self.images_path, f"{gesture_id}.png")
         if os.path.exists(img_path):
-            # print(f"DEBUG GESTURE: Carregando {img_path}")
             pixmap = QPixmap(img_path)
-            scaled_pixmap = pixmap.scaled(self.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.setPixmap(scaled_pixmap)
+            margin = 8
+            scaled = pixmap.scaled(self.width() - margin, self.height() - margin,
+                                   Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.setPixmap(scaled)
         else:
-            if gesture_id != 30: # Evita log de erro para métricas EEG dinâmicas
+            if gesture_id != 30:  # Evita log de erro para métricas EEG dinâmicas
                 print(f"DEBUG GESTURE: Arquivo NAO encontrado: {img_path}")
-            self.setText(f"GESTO {gesture_id}\n(Imagem ausente)" if gesture_id != 30 else "EEG DINÂMICO")
             self.setPixmap(QPixmap())
+            self.setText("EEG" if gesture_id == 30 else f"#{gesture_id}")
