@@ -12,8 +12,8 @@ export class HandOutput {
   private pos: Record<Finger, number> = { polegar: 0, indicador: 0, medio: 0, anelar: 0, minimo: 0 };
   private busy = false;
 
-  async connect(): Promise<void> {
-    await this.board.connect();
+  async connect(showAll = false): Promise<void> {
+    await this.board.connect(showAll);
     for (const f of FINGERS) await this.board.servoConfig(PINS[f]);
     for (const f of FINGERS) await this.board.servoWrite(PINS[f], 0);
     this.pos = { polegar: 0, indicador: 0, medio: 0, anelar: 0, minimo: 0 };

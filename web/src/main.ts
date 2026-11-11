@@ -143,25 +143,31 @@ output.board.onDisconnect = () => {
   arduinoUi(false);
   arduinoStatus.textContent = 'Arduino desconectado.';
 };
-btnArduino.addEventListener('click', async () => {
+async function connectArduino(showAll: boolean) {
   if (output.board.connected) {
     await output.disconnect();
-    return;
+    if (!showAll) return;
   }
   btnArduino.disabled = true;
   arduinoStatus.textContent = 'Escolha a porta do Arduino na janela do navegador…';
   try {
-    await output.connect();
+    await output.connect(showAll);
     arduinoUi(true);
-    arduinoStatus.textContent = output.board.firmware ? `Conectado (${output.board.firmware}).` : 'Conectado.';
+    const fw = output.board.firmware ? `, ${output.board.firmware}` : '';
+    arduinoStatus.textContent = `Conectado (${output.board.portLabel}${fw}).`;
   } catch (e) {
     const err = e as Error;
-    arduinoStatus.textContent = serialError(err, 'o Arduino');
+    arduinoStatus.textContent =
+      err.name === 'NotFoundError' && !showAll
+        ? 'Nenhuma porta escolhida. Se o Arduino não apareceu na lista, confira o cabo USB ou use "Outra porta…".'
+        : serialError(err, 'o Arduino');
     await output.disconnect();
   } finally {
     btnArduino.disabled = false;
   }
-});
+}
+btnArduino.addEventListener('click', () => void connectArduino(false));
+$('btn-arduino-all').addEventListener('click', () => void connectArduino(true));
 btnTest.addEventListener('click', async () => {
   btnTest.disabled = true;
   await output.testSequence((m) => (arduinoStatus.textContent = m));
@@ -247,5 +253,6 @@ setInterval(() => {
 if (!FirmataBoard.supported) {
   $('serial-warning').hidden = false;
   btnArduino.disabled = true;
+  $<HTMLButtonElement>('btn-arduino-all').disabled = true;
   btnEeg.disabled = true;
 }

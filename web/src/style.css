@@ -141,3 +141,4 @@ select { max-width: 100%; min-width: 0; }
 .sliders label { display: grid; grid-template-columns: 76px 1fr 40px; gap: 8px; align-items: center; }
 
 .foot { padding: 16px 24px; color: var(--muted); font-size: 0.85rem; text-align: center; }
+button.link { background: none; border: 0; padding: 7px 4px; color: var(--accent); text-decoration: underline; }

@@ -88,10 +88,11 @@
 
         <div class="arduino">
           <h3>Mão robótica (Arduino)</h3>
-          <p class="muted small">O Arduino precisa estar com o StandardFirmata. Servos nos pinos 10, 9, 8, 7 e 6.</p>
+          <p class="muted small">O Arduino precisa estar com o StandardFirmata. Servos nos pinos 10, 9, 8, 7 e 6. A lista mostra só portas de Arduino (oficial, CH340, FTDI, CP210x); se a sua não aparecer, use "Outra porta…".</p>
           <div class="row">
             <button class="primary" id="btn-arduino">Conectar Arduino</button>
             <button id="btn-test" disabled>Testar servos</button>
+            <button class="link" id="btn-arduino-all" title="Lista todas as portas seriais, não só as de Arduino">Outra porta…</button>
             <label class="switch"><input type="checkbox" id="chk-active" checked /> Enviar movimentos</label>
           </div>
           <p class="muted small" id="arduino-status"></p>

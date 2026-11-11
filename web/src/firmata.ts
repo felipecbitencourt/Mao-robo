@@ -10,6 +10,36 @@ const EXTENDED_ANALOG = 0x6f;
 const REPORT_FIRMWARE = 0x79;
 const PIN_MODE_SERVO = 0x04;
 
+/** Fabricantes USB das placas e adaptadores usados com Arduino. */
+export const ARDUINO_USB_VENDORS: Record<number, string> = {
+  0x2341: 'Arduino',
+  0x2a03: 'Arduino',
+  0x1a86: 'CH340',
+  0x0403: 'FTDI',
+  0x10c4: 'CP210x',
+};
+
+const isArduinoPort = (p: SerialPort) => {
+  const id = p.getInfo().usbVendorId;
+  return id !== undefined && id in ARDUINO_USB_VENDORS;
+};
+
+export function describePort(p: SerialPort): string {
+  const id = p.getInfo().usbVendorId;
+  return id !== undefined ? ARDUINO_USB_VENDORS[id] ?? `USB ${id.toString(16)}` : 'serial';
+}
+
+async function pickArduinoPort(showAll: boolean): Promise<SerialPort> {
+  if (!showAll) {
+    // Porta autorizada numa visita anterior e ainda plugada: conecta sem perguntar.
+    const known = (await navigator.serial.getPorts()).filter(isArduinoPort);
+    if (known.length === 1) return known[0];
+    const filters = Object.keys(ARDUINO_USB_VENDORS).map((v) => ({ usbVendorId: Number(v) }));
+    return navigator.serial.requestPort({ filters });
+  }
+  return navigator.serial.requestPort();
+}
+
 export class FirmataBoard {
   private port: SerialPort | null = null;
   private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
@@ -25,9 +55,18 @@ export class FirmataBoard {
     return this.writer !== null;
   }
 
-  /** Abre o seletor de portas do navegador e conecta (57600 baud, padrão do StandardFirmata). */
-  async connect(baudRate = 57600): Promise<void> {
-    const port = await navigator.serial.requestPort();
+  get portLabel(): string {
+    return this.port ? describePort(this.port) : '';
+  }
+
+  /**
+   * Escolhe a porta e conecta (57600 baud, padrão do StandardFirmata).
+   * Por padrão reaproveita a placa já autorizada antes e, se não houver, abre o seletor
+   * mostrando só adaptadores USB-serial de Arduino (oficial, CH340, FTDI, CP210x).
+   * Com showAll = true o seletor lista todas as portas.
+   */
+  async connect(showAll = false, baudRate = 57600): Promise<void> {
+    const port = await pickArduinoPort(showAll);
     await port.open({ baudRate });
     this.port = port;
     this.writer = port.writable!.getWriter();
