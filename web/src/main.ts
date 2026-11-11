@@ -120,6 +120,14 @@ camSelect.addEventListener('change', () => {
 });
 void fillCameras().catch(() => (camSelect.hidden = true));
 
+function serialError(err: Error, device: string): string {
+  if (err.name === 'NotFoundError') return 'Nenhuma porta escolhida.';
+  if (err.name === 'InvalidStateError' || /Failed to open serial port/i.test(err.message)) {
+    return `Não foi possível abrir a porta d${device}. Ela provavelmente já está em uso por outro programa (app desktop da mão, Monitor Serial do Arduino IDE ou outra aba deste site). Feche-o, reconecte o cabo USB e tente de novo.`;
+  }
+  return `Falha ao conectar: ${err.message}`;
+}
+
 // ---------- Arduino ----------
 const pillArduino = $('pill-arduino');
 const arduinoStatus = $('arduino-status');
@@ -148,7 +156,7 @@ btnArduino.addEventListener('click', async () => {
     arduinoStatus.textContent = output.board.firmware ? `Conectado (${output.board.firmware}).` : 'Conectado.';
   } catch (e) {
     const err = e as Error;
-    arduinoStatus.textContent = err.name === 'NotFoundError' ? 'Nenhuma porta escolhida.' : `Falha ao conectar: ${err.message}`;
+    arduinoStatus.textContent = serialError(err, 'o Arduino');
     await output.disconnect();
   } finally {
     btnArduino.disabled = false;
@@ -196,7 +204,7 @@ btnEeg.addEventListener('click', async () => {
     btnEeg.textContent = 'Desconectar tiara';
   } catch (e) {
     const err = e as Error;
-    $('eeg-status').textContent = err.name === 'NotFoundError' ? 'Nenhuma porta escolhida.' : `Falha ao conectar a tiara: ${err.message}`;
+    $('eeg-status').textContent = serialError(err, 'a tiara');
   }
 });
 const gain = $<HTMLInputElement>('eeg-gain');
