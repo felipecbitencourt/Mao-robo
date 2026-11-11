@@ -45,3 +45,8 @@ desktop.ini
 
 # Modelos duplicados na lixeira (originais em models/)
 lixeira/dist/*.task
+
+# Estado local da aplicação (portas, calibrações). Padrões em config.json.
+config.local.json
+config.local.json.corrompido
+.config.*.tmp

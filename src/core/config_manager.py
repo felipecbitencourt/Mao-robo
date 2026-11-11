@@ -1,24 +1,46 @@
 import json
 import os
 import sys
+import tempfile
+
 
 class ConfigManager:
     """
-    Gerenciador de configurações persistentes para o Mao-robo.
-    Salva as preferências e calibrações no arquivo config.json na raiz do projeto
-    ou na raiz do repositório executável nativo.
+    Configurações persistentes do Mao-robo.
+
+    - ``config.json`` (versionado no git) traz os valores padrão do projeto.
+    - ``config.local.json`` (ignorado pelo git) guarda o estado desta máquina:
+      portas, câmeras, calibrações e preferências. É o único arquivo gravado.
+
+    Na primeira execução, se ``config.local.json`` não existir, ele é criado com
+    o conteúdo atual de ``config.json``, para não perder calibrações antigas.
+    A gravação é atômica (arquivo temporário + os.replace): um travamento no
+    meio da escrita não corrompe a configuração.
     """
-    def __init__(self, filename="config.json"):
-        if getattr(sys, 'frozen', False):
-            # Se empacotado pelo PyInstaller, gravar ao lado do executável final
+
+    LOCAL_FILENAME = "config.local.json"
+
+    def __init__(self, filename="config.json", base_dir=None):
+        if base_dir is not None:
+            defaults_dir = base_dir
+        elif getattr(sys, 'frozen', False):
+            # Empacotado pelo PyInstaller: estado gravado ao lado do executável,
+            # padrões lidos do config.json embutido no pacote
             base_dir = os.path.dirname(sys.executable)
+            # (um config.json antigo ao lado do .exe tem prioridade, para migrar)
+            if os.path.exists(os.path.join(base_dir, filename)):
+                defaults_dir = base_dir
+            else:
+                defaults_dir = getattr(sys, '_MEIPASS', base_dir)
         else:
-            # Diretório raiz (Mao-robo) local no código
+            # Raiz do repositório (src/core/config_manager.py -> ../../)
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        self.filepath = os.path.join(base_dir, filename)
-        
-        # Configuração padrão caso o arquivo não exista
+            defaults_dir = base_dir
+
+        self.defaults_path = os.path.join(defaults_dir, filename)
+        self.filepath = os.path.join(base_dir, self.LOCAL_FILENAME)
+
+        # Configuração padrão caso nenhum arquivo exista
         self.config = {
             "arduino_port": "COM5",
             "theme_dark_mode": True,
@@ -26,28 +48,55 @@ class ConfigManager:
         }
         self.load()
 
+    @staticmethod
+    def _read_json(path):
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("o arquivo não contém um objeto JSON")
+        return data
+
     def load(self):
-        """Carrega as configurações do arquivo JSON (se existir)"""
+        """Carrega padrões (config.json) e, por cima, o estado local."""
+        if os.path.exists(self.defaults_path):
+            try:
+                self.config.update(self._read_json(self.defaults_path))
+            except Exception as e:
+                print(f"[ConfigManager] Erro ao ler padrões '{self.defaults_path}': {e}")
+
         if os.path.exists(self.filepath):
             try:
-                with open(self.filepath, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    # Mescla a config carregada com o dicionário padrão (evita que chaves novas quebrem)
-                    self.config.update(data)
-                print(f"[ConfigManager] Configurações recarregadas com sucesso de {self.filepath}")
+                self.config.update(self._read_json(self.filepath))
+                print(f"[ConfigManager] Configurações carregadas de {self.filepath}")
             except Exception as e:
-                print(f"[ConfigManager] Erro ao carregar '{self.filepath}': {e}")
+                # Não sobrescreve o arquivo com problema: guarda uma cópia para análise
+                backup = self.filepath + ".corrompido"
+                try:
+                    os.replace(self.filepath, backup)
+                except OSError:
+                    pass
+                print(f"[ConfigManager] Erro ao ler '{self.filepath}' ({e}). Cópia salva em '{backup}'.")
         else:
-            print(f"[ConfigManager] Arquivo config.json não encontrado. Usando definições padrão.")
+            # Primeira execução com o arquivo local: migra o estado atual
+            self.save()
 
     def save(self):
-        """Salva as configurações atuais no arquivo JSON"""
+        """Grava o estado em config.local.json de forma atômica."""
+        directory = os.path.dirname(self.filepath) or "."
         try:
-            with open(self.filepath, "w", encoding="utf-8") as f:
-                json.dump(self.config, f, indent=4, ensure_ascii=False)
-            print(f"[ConfigManager] Status salvo em '{self.filepath}'")
+            fd, tmp = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=directory)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(self.config, f, indent=4, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, self.filepath)
+            except BaseException:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                raise
         except Exception as e:
-            print(f"[ConfigManager] Erro fatal ao tentar salvar o arquivo: {e}")
+            print(f"[ConfigManager] Erro ao salvar '{self.filepath}': {e}")
 
     def get(self, key, default=None):
         """Recupera o valor de uma chave específica"""
