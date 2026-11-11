@@ -1,129 +1,130 @@
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QGraphicsDropShadowEffect
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+
+from ui.components.controls import Segmented, StatusChip
+from ui.icons import set_icon
+
 
 class NavHeader(QFrame):
     """
-    Header de navegação global com indicadores de status e controles de sistema.
+    Cabeçalho global: marca, seletor de fonte (Câmera / Luva / EEG),
+    chips de status do hardware e botões de tema e configurações.
     """
     theme_toggled = Signal()
-    tab_changed = Signal(int)
+    settings_clicked = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setObjectName("nav_header")
-        self.setFixedHeight(64)
-        
-        self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(24, 0, 24, 0)
-        self.layout.setSpacing(20)
+        self.setObjectName("header")
+        self.setFixedHeight(60)
+        self._theme = None
+        self._is_dark = True
 
-        # ── LOGO E TÍTULO ────────────────────────────────────────
-        self.logo_label = QLabel("🤖")
-        self.logo_label.setStyleSheet("font-size: 24px;")
-        self.title_label = QLabel("MÃO-ROBÔ v2.0")
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 14px; letter-spacing: 2px; color: #F4F4FD;")
-        
-        self.title_group = QHBoxLayout()
-        self.title_group.setSpacing(12)
-        self.title_group.addWidget(self.logo_label)
-        self.title_group.addWidget(self.title_label)
-        self.layout.addLayout(self.title_group)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 0, 16, 0)
+        layout.setSpacing(16)
 
-        self.layout.addStretch()
+        # ── Marca ────────────────────────────────────────────────
+        brand = QHBoxLayout()
+        brand.setSpacing(10)
+        self.logo_badge = QFrame()
+        self.logo_badge.setObjectName("logo_badge")
+        self.logo_badge.setFixedSize(32, 32)
+        badge_lyt = QHBoxLayout(self.logo_badge)
+        badge_lyt.setContentsMargins(0, 0, 0, 0)
+        self.logo_icon = QPushButton()
+        self.logo_icon.setFlat(True)
+        self.logo_icon.setEnabled(False)
+        self.logo_icon.setStyleSheet("background:transparent; border:none; min-height:0; padding:0;")
+        self.logo_icon.setIconSize(QSize(18, 18))
+        badge_lyt.addWidget(self.logo_icon, 0, Qt.AlignCenter)
+        brand.addWidget(self.logo_badge)
 
-        # ── INDICADORES DE STATUS (HUD) ──────────────────────────
-        self.hud_container = QFrame()
-        self.hud_container.setObjectName("hud_nav")
-        self.hud_container.setStyleSheet("""
-            QFrame#hud_nav {
-                background: rgba(26, 26, 38, 0.4);
-                border: 1px solid rgba(255, 255, 255, 0.05);
-                border-radius: 12px;
-            }
-        """)
-        hud_lyt = QHBoxLayout(self.hud_container)
-        hud_lyt.setContentsMargins(15, 6, 15, 6)
-        hud_lyt.setSpacing(18)
+        names = QVBoxLayout()
+        names.setSpacing(0)
+        self.title_label = QLabel("Mão Robótica")
+        self.title_label.setObjectName("app_name")
+        self.tagline_label = QLabel("Controle multimodal")
+        self.tagline_label.setObjectName("app_tagline")
+        names.addWidget(self.title_label)
+        names.addWidget(self.tagline_label)
+        brand.addLayout(names)
+        layout.addLayout(brand)
 
-        self.arduino_indicator = QLabel("● ARDUINO: OFF")
-        self.arduino_indicator.setStyleSheet("color:#EF4444; font-weight:bold; font-size:10px;")
-        
-        self.eeg_indicator = QLabel("● EEG: OFF")
-        self.eeg_indicator.setStyleSheet("color:#EF4444; font-weight:bold; font-size:10px;")
+        layout.addStretch(1)
 
-        self.fps_indicator = QLabel("● FPS: 0")
-        self.fps_indicator.setStyleSheet("color:#7D7D9C; font-weight:bold; font-size:10px;")
+        # ── Seletor de fonte de controle ─────────────────────────
+        self.mode_selector = Segmented(["Câmera", "Luva 5DT", "EEG"], exclusive=False)
+        self.btn_cam, self.btn_glove, self.btn_eeg = self.mode_selector.buttons
+        self.btn_cam.setToolTip("Ligar/desligar o rastreamento por câmera")
+        self.btn_glove.setToolTip("Ligar/desligar a luva sensorial 5DT")
+        self.btn_eeg.setToolTip("Ligar/desligar a tiara EEG BrainLink")
+        layout.addWidget(self.mode_selector, 0, Qt.AlignVCenter)
 
-        hud_lyt.addWidget(self.arduino_indicator)
-        hud_lyt.addWidget(self.eeg_indicator)
-        hud_lyt.addWidget(self.fps_indicator)
-        self.layout.addWidget(self.hud_container)
+        layout.addStretch(1)
 
-        self.layout.addSpacing(10)
+        # ── Status do hardware ───────────────────────────────────
+        self.arduino_indicator = StatusChip("Arduino desconectado", "danger")
+        self.eeg_indicator = StatusChip("EEG desligado", "off")
+        self.fps_indicator = StatusChip("0 fps", "mono")
+        for chip in (self.arduino_indicator, self.eeg_indicator, self.fps_indicator):
+            layout.addWidget(chip, 0, Qt.AlignVCenter)
 
-        # ── CONTROLES GLOBAIS ────────────────────────────────────
-        self.btn_theme = QPushButton("☀️") # Sol por padrão (toggle para lua)
-        self.btn_theme.setCursor(Qt.PointingHandCursor)
+        # ── Ações globais ────────────────────────────────────────
+        self.btn_theme = QPushButton()
+        self.btn_theme.setProperty("variant", "icon")
         self.btn_theme.setFixedSize(36, 36)
-        self.btn_theme.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.05);
-                border-radius: 18px;
-                font-size: 16px;
-            }
-            QPushButton:hover { background: rgba(255, 255, 255, 0.08); }
-        """)
+        self.btn_theme.setCursor(Qt.PointingHandCursor)
+        self.btn_theme.setToolTip("Alternar tema claro/escuro")
         self.btn_theme.clicked.connect(self.theme_toggled.emit)
-        self.layout.addWidget(self.btn_theme)
+        layout.addWidget(self.btn_theme)
 
-        # Sombra suave inferior
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(15)
-        shadow.setColor(QColor(0, 0, 0, 40))
-        shadow.setOffset(0, 4)
-        self.setGraphicsEffect(shadow)
+        self.btn_settings = QPushButton()
+        self.btn_settings.setProperty("variant", "icon")
+        self.btn_settings.setCheckable(True)
+        self.btn_settings.setFixedSize(36, 36)
+        self.btn_settings.setCursor(Qt.PointingHandCursor)
+        self.btn_settings.setToolTip("Configurações de hardware e console")
+        self.btn_settings.toggled.connect(self.settings_clicked.emit)
+        layout.addWidget(self.btn_settings)
 
     def update_theme(self, is_dark, colors):
-        """Atualiza o estilo do header conforme o tema do sistema"""
-        self.btn_theme.setText("🌙" if is_dark else "☀️")
-        bg_color = colors['sidebar_bg']
-        border_color = colors['border']
-        text_color = colors['text_bright']
-        
-        self.setStyleSheet(f"""
-            QFrame#nav_header {{
-                background-color: {bg_color};
-                border-bottom: 1px solid {border_color};
-            }}
-            QLabel {{ color: {text_color}; }}
-        """)
-        
-        # Ajusta HUD
-        hud_bg = "rgba(0,0,0,0.2)" if is_dark else "rgba(255,255,255,0.1)"
-        self.hud_container.setStyleSheet(f"""
-            QFrame#hud_nav {{
-                background: {hud_bg};
-                border: 1px solid {border_color};
-                border-radius: 12px;
-            }}
-        """)
+        """Recolore ícones e chips conforme o tema."""
+        self._theme = colors
+        self._is_dark = is_dark
+        set_icon(self.logo_icon, "hand", colors["accent_strong"], 18)
+        set_icon(self.btn_theme, "sun" if is_dark else "moon", colors["text_muted"], 16)
+        set_icon(self.btn_settings, "settings", colors["text_muted"], 16)
+        set_icon(self.btn_cam, "camera", colors["text_muted"], 16)
+        set_icon(self.btn_glove, "hand", colors["text_muted"], 16)
+        set_icon(self.btn_eeg, "activity", colors["text_muted"], 16)
+        for chip in (self.arduino_indicator, self.eeg_indicator, self.fps_indicator):
+            chip.set_theme(colors)
 
-    # ── MÉTODOS DE ATUALIZAÇÃO TELEMETRIA ────────────────────────
+    # ── Telemetria ───────────────────────────────────────────────
     def set_arduino_status(self, connected):
-        color = "#10B981" if connected else "#EF4444"
-        self.arduino_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:10px;")
-        self.arduino_indicator.setText(f"● ARDUINO: {'OK' if connected else 'OFF'}")
+        self._arduino_connected = bool(connected)
+        port = getattr(self, "_arduino_port", "")
+        if connected:
+            self.arduino_indicator.set_state("ok", f"Arduino · {port}" if port else "Arduino conectado")
+        else:
+            self.arduino_indicator.set_state("danger", "Arduino desconectado")
+
+    def set_arduino_port(self, port):
+        self._arduino_port = port or ""
+        self.set_arduino_status(getattr(self, "_arduino_connected", False))
 
     def set_fps(self, fps):
-        color = "#10B981" if fps > 22 else ("#F59E0B" if fps > 12 else "#EF4444")
-        self.fps_indicator.setText(f"● FPS: {int(fps)}")
-        self.fps_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:10px;")
+        self.fps_indicator.set_state("mono", f"{int(fps)} fps")
 
     def set_eeg_quality(self, signal):
-        # signal 0-200 (baixo é melhor)
-        color = "#10B981" if signal < 50 else ("#F59E0B" if signal < 200 else "#EF4444")
-        text = "FORTE" if signal < 50 else ("MÉDIO" if signal < 200 else "SEM SINAL")
-        self.eeg_indicator.setText(f"● EEG: {text}")
-        self.eeg_indicator.setStyleSheet(f"color:{color}; font-weight:bold; font-size:10px;")
+        # signal 0-200 (quanto menor, melhor)
+        if signal < 50:
+            self.eeg_indicator.set_state("ok", "EEG · sinal bom")
+        elif signal < 200:
+            self.eeg_indicator.set_state("warn", "EEG · sinal fraco")
+        else:
+            self.eeg_indicator.set_state("danger", "EEG · sem sinal")
+
+    def set_eeg_off(self):
+        self.eeg_indicator.set_state("off", "EEG desligado")

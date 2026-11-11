@@ -29,6 +29,9 @@ class SpectrogramWidget(QWidget):
         self.max_observed = 1000  # Valor base para normalização (ajustável)
 
         self.setMinimumHeight(200)
+        self._bg = QColor("#0A0C10")
+        self._label = QColor("#9AA3B2")
+        self._axis = QColor("#353B47")
 
     def add_data(self, waves_dict):
         """Adiciona um novo conjunto de 8 bandas ao buffer e solicita repaint"""
@@ -49,21 +52,26 @@ class SpectrogramWidget(QWidget):
         self.buffer.append(entry)
         self.update()
 
+    # Paleta perceptual (estilo viridis): escura → verde-água → amarela
+    _STOPS = [
+        (0.00, (13, 8, 40)), (0.25, (59, 46, 120)), (0.50, (33, 145, 140)),
+        (0.75, (94, 201, 98)), (1.00, (253, 231, 37)),
+    ]
+
+    def set_theme(self, t):
+        self._bg = QColor(t["video_bg"] if t["name"] == "dark" else t["surface_alt"])
+        self._label = QColor(t["text_muted"])
+        self._axis = QColor(t["border_strong"])
+        self.update()
+
     def _get_color(self, value):
-        """Mapeia um valor normalizado (0-1) para uma cor de mapa de calor"""
-        # Gradiente: Preto -> Azul -> Verde -> Amarelo -> Vermelho -> Branco
+        """Mapeia um valor normalizado (0-1) para a paleta perceptual"""
         v = max(0.0, min(1.0, value))
-        
-        if v < 0.2: # Preto -> Azul
-            return QColor(0, 0, int(v / 0.2 * 255))
-        elif v < 0.4: # Azul -> Ciano/Verde
-            return QColor(0, int((v - 0.2) / 0.2 * 255), 255)
-        elif v < 0.6: # Verde -> Amarelo
-            return QColor(int((v - 0.4) / 0.2 * 255), 255, 255 - int((v - 0.4) / 0.2 * 255))
-        elif v < 0.8: # Amarelo -> Vermelho
-            return QColor(255, 255 - int((v - 0.6) / 0.2 * 255), 0)
-        else: # Vermelho -> Branco
-            return QColor(255, int((v - 0.8) / 0.2 * 255), int((v - 0.8) / 0.2 * 255))
+        for (p0, c0), (p1, c1) in zip(self._STOPS, self._STOPS[1:]):
+            if v <= p1:
+                k = (v - p0) / (p1 - p0)
+                return QColor(*[int(a + (b - a) * k) for a, b in zip(c0, c1)])
+        return QColor(*self._STOPS[-1][1])
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -79,12 +87,12 @@ class SpectrogramWidget(QWidget):
         draw_h = h - margin_bottom
         
         if not self.buffer:
-            painter.setPen(QColor("#555555"))
-            painter.drawText(self.rect(), Qt.AlignCenter, "Aguardando sinal EEG...")
+            painter.setPen(self._label)
+            painter.drawText(self.rect(), Qt.AlignCenter, "Aguardando sinal do EEG…")
             return
 
         # Desenha o fundo
-        painter.fillRect(label_width, 0, draw_w, draw_h, QColor("#10101A"))
+        painter.fillRect(label_width, 0, draw_w, draw_h, self._bg)
 
         num_bands = len(self.band_keys)
         cell_h = draw_h / num_bands
@@ -95,10 +103,10 @@ class SpectrogramWidget(QWidget):
             y = row_idx * cell_h
             
             # Label da banda
-            painter.setPen(QColor("#A7A7C6"))
+            painter.setPen(self._label)
             font = painter.font()
             font.setPointSize(8)
-            font.setBold(True)
+            font.setBold(False)
             painter.setFont(font)
             painter.drawText(QRectF(5, y, label_width - 10, cell_h), Qt.AlignRight | Qt.AlignCenter, self.band_labels[band_data_idx])
 
@@ -117,7 +125,7 @@ class SpectrogramWidget(QWidget):
                 painter.fillRect(QRectF(x, y, cell_w + 1, cell_h + 1), color)
 
         # Desenha régua temporal (simples)
-        painter.setPen(QColor("#3A3A52"))
+        painter.setPen(self._axis)
         painter.drawLine(label_width, draw_h, w, draw_h)
-        painter.drawText(QRectF(label_width, draw_h + 2, draw_w, 18), Qt.AlignLeft, "Anterior")
-        painter.drawText(QRectF(label_width, draw_h + 2, draw_w, 18), Qt.AlignRight, "Agora")
+        painter.drawText(QRectF(label_width, draw_h + 2, draw_w, 18), Qt.AlignLeft, "antes")
+        painter.drawText(QRectF(label_width, draw_h + 2, draw_w, 18), Qt.AlignRight, "agora")
