@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 
 from core.config_manager import ConfigManager
+from core.paths import resource_path
 from hardware.eeg_brainlink import BrainLinkEEG
 
 
@@ -84,9 +85,25 @@ class HardwareService:
 
         return states
 
+    @staticmethod
+    def _create_detector():
+        # MediaPipe 0.10.30+ removeu mp.solutions; usa a API Tasks (igual ao app desktop)
+        with open(resource_path("models/hand_landmarker.task"), "rb") as f:
+            model = f.read()
+        vision = mp.tasks.vision
+        options = vision.HandLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_buffer=model),
+            running_mode=vision.RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.5,
+            min_hand_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        return vision.HandLandmarker.create_from_options(options)
+
     def _loop(self):
-        mp_hands = mp.solutions.hands
-        hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        detector = self._create_detector()
+        last_ts = -1
         self.cap = cv2.VideoCapture(self.camera_index)
 
         # EEG é opcional: se a tiara não estiver conectada o modo "gestures" segue funcionando
@@ -102,11 +119,15 @@ class HardwareService:
                 success, frame = self.cap.read()
                 if success:
                     frame = cv2.flip(frame, 1)
-                    results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                    if results.multi_hand_landmarks:
+                    image = mp.Image(image_format=mp.ImageFormat.SRGB,
+                                     data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                    ts = max(int(time.time() * 1000), last_ts + 1)
+                    last_ts = ts
+                    results = detector.detect_for_video(image, ts)
+                    if results.hand_landmarks:
                         self.telemetry["hand_detected"] = True
                         h, w, _ = frame.shape
-                        coords = [[lm.x * w, lm.y * h] for lm in results.multi_hand_landmarks[0].landmark]
+                        coords = [[lm.x * w, lm.y * h] for lm in results.hand_landmarks[0]]
                         self.telemetry["fingers"] = self._calculate_finger_states(coords)
                         # NOTA: este protótipo apenas publica telemetria; o acionamento dos
                         # servos nunca foi implementado aqui. Para mover a mão de verdade,
@@ -125,6 +146,8 @@ class HardwareService:
                 }
 
             time.sleep(0.05)
+
+        detector.close()
 
 
 service = HardwareService()

@@ -8,6 +8,7 @@ from inputs.eeg_input import EEGInput
 from processing.hand_processor import HandProcessor
 from processing.finger_scale import glove_opening, legacy_from_opening, opening_from_legacy
 from outputs.arduino_output import ArduinoOutput
+from outputs.csv_recorder import CsvRecorder
 from core.ports import is_eeg_port_description
 from core.config_manager import ConfigManager
 
@@ -35,6 +36,9 @@ class HubController(QObject):
         self.config = ConfigManager()
         
         # Conecta no arduino usando a última porta salva na configuração
+        # Gravação de sessão em CSV (pasta "gravacoes" ao lado do config.local.json)
+        self.recorder = CsvRecorder(os.path.join(os.path.dirname(self.config.filepath), "gravacoes"))
+
         port = self.config.get("arduino_port", "COM5")
         self.arduino = ArduinoOutput(port=port)
         
@@ -92,6 +96,17 @@ class HubController(QObject):
         else:
             print("DEBUG HUB: Desativando saída robótica.")
             self.status_signal.emit("Saída Robótica DESATIVADA")
+
+    def set_recording(self, active):
+        """Liga/desliga a gravação das predições em CSV. Retorna o caminho do arquivo."""
+        if active:
+            path = self.recorder.start()
+            self.status_signal.emit(f"Gravando sessão em {path}")
+        else:
+            path = self.recorder.stop()
+            if path:
+                self.status_signal.emit(f"Sessão salva em {path}")
+        return path
 
     def stop_motors(self):
         """Parada de emergência dos servos, sem desligar as entradas."""
@@ -526,6 +541,7 @@ class HubController(QObject):
             
             if should_emit:
                 self.prediction_signal.emit(data)
+                self.recorder.write(data)
                 
                 # Controle do Arduino (sempre em abertura 0..1)
                 if self.arduino.active and gid != -1:
@@ -604,6 +620,7 @@ class HubController(QObject):
                     print(f"[Hub] Erro ao parar {type(src).__name__}: {e}")
 
         self.processor.stop()
+        self.recorder.stop()
 
         try:
             self.arduino.safe_stop()

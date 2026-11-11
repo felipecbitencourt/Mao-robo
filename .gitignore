@@ -50,3 +50,4 @@ lixeira/dist/*.task
 config.local.json
 config.local.json.corrompido
 .config.*.tmp
+gravacoes/

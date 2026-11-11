@@ -11,9 +11,11 @@ Sistema unificado para controle de uma mão robótica através de três interfac
 
 - **Painel Centralizado (PySide6)**: interface gráfica com tema claro/escuro e seleção interativa de portas USB/Bluetooth.
 - **Modo Câmera**: reconhecimento das mãos via MediaPipe Tasks, gerando gestos discretos ou acompanhamento fluido contínuo por dedo. Suporta **câmera única ou visão dual com fusão** das duas fontes.
-- **Modo Luva Sensorial**: mapeamento linear-segmentado (*piecewise linear interpolation*) dos sensores ópticos da 5DT para movimento contínuo e individual dos 5 dedos, com calibração em três estados (`CLOSED` / `HALF` / `OPEN`).
+- **Modo Luva Sensorial**: cada dedo do robô segue os dois sensores de flexão do dedo correspondente na 5DT (articulação próxima e distante). Sem calibração, o movimento é contínuo (com ganho por dedo). Com a calibração clínica (10 ciclos abrir/fechar), cada dedo abre ou fecha conforme o limiar.
 - **Modo Neuro (EEG)**: abertura e fechamento progressivo dos dedos comandado por ondas cerebrais, nos modos **Atenção**, **Meditação** e **Foco Real** (este último usando limiar calibrado por usuário).
-- **Perfis Persistentes**: calibrações da luva, limiares clínicos e preferências salvos automaticamente em `config.json`.
+- **Perfis Persistentes**: calibrações da luva, limiares clínicos e preferências salvos automaticamente em `config.local.json`.
+- **Gravação de sessão**: a chave "Gravar sessão (CSV)" grava cada predição (fonte, gesto, confiança e abertura de cada dedo) em `gravacoes/`.
+- **Parada de emergência**: o botão "Parar motores" (ou Esc) leva todos os servos à posição de mão aberta e desliga as entradas.
 
 ## 📋 Requisitos de Hardware
 
@@ -67,7 +69,8 @@ O detalhamento técnico do pipeline de visão (aquisição, inferência de landm
 | `src/outputs/` | Comunicação com StandardFirmata e servos (`arduino_output`) |
 | `src/hardware/` | Driver de baixo nível do BrainLink (`eeg_brainlink`) |
 | `src/ui/` | Janela principal e componentes Qt reutilizáveis |
-| `src/utils/` | Utilitários auxiliares de configuração |
+| `src/processing/finger_scale.py` | Escala única dos dedos (abertura 0 a 1) e mapa dos 18 sensores da luva |
+| `tests/` | Testes que rodam sem hardware (`pytest`) |
 | `src/luva/` | SDK 5DT Data Glove Ultra, assets 3D e projeto de avaliação clínica |
 | `models/` | Modelos MediaPipe (`hand_landmarker.task`, `gesture_recognizer.task`) |
 | `config/` | Calibração de EEG por usuário |
@@ -87,7 +90,7 @@ O detalhamento técnico do pipeline de visão (aquisição, inferência de landm
 
 ## 🗃️ Configuração
 
-`config.json` (raiz) guarda o estado da aplicação e é reescrito automaticamente:
+`config.json` (raiz, versionado) traz os valores padrão. O estado desta máquina fica em `config.local.json`, que é ignorado pelo git e gravado de forma atômica. Na primeira execução ele é criado a partir do `config.json` atual, então calibrações antigas são mantidas. Chaves:
 
 | Chave | Função |
 |-------|--------|
@@ -95,11 +98,21 @@ O detalhamento técnico do pipeline de visão (aquisição, inferência de landm
 | `camera_index`, `camera2_index` | Índices das webcams |
 | `camera_backend` | `msmf` ou `dshow` |
 | `glove_calibration` | Leituras de referência dos estados `HALF` e `OPEN` |
+| `glove_clinical_thresholds` | Limiar por sensor da calibração clínica (valor ≥ limiar = dedo fechado) |
 | `glove_weights` | Ganho individual por dedo |
 | `eeg_gain`, `eeg_smoothing` | Sensibilidade e suavização do sinal EEG |
 | `theme_dark_mode` | Tema da interface |
 
 `config/calibracao_eeg.json` guarda o limiar de foco calculado no protocolo de calibração (médias de relaxamento e concentração).
+
+## 🧪 Testes
+
+Os testes cobrem o que dá para verificar sem hardware: escala dos dedos e mapa da luva, parser do BrainLink, saída para o Arduino (com placa simulada), fusão das câmeras, configuração e gravação em CSV.
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
 
 ## 📦 Gerar o Executável
 
@@ -136,7 +149,7 @@ O servidor sobe em `http://localhost:8000` e expõe:
 | `/ws` | WebSocket | Telemetria contínua (mão detectada, ângulos por dedo, métricas de EEG) |
 | `/set_mode` | POST | Alterna entre os modos `gestures` e `eeg` |
 
-Portas e índice de câmera são lidos do mesmo `config.json` da interface desktop. A tiara EEG é opcional: se não for encontrada, o modo `gestures` continua funcionando.
+Portas e índice de câmera são lidos da mesma configuração da interface desktop (`config.json` + `config.local.json`). A tiara EEG é opcional: se não for encontrada, o modo `gestures` continua funcionando.
 
 ⚠️ **Escopo do protótipo**: ele apenas *publica telemetria* — o acionamento dos servos nunca foi implementado nesta via. Para mover a mão de verdade, use a interface desktop (`main.py`), que passa por `src/outputs/arduino_output.py`.
 

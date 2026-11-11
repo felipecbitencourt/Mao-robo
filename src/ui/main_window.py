@@ -1055,10 +1055,14 @@ class MainWindow(QMainWindow):
 
     def _toggle_output_csv(self, checked):
         self.switch_csv.subtitle.setText("Gravando" if checked else "Desligado")
-        if checked:
-            self.hub.status_signal.emit("Gravação CSV iniciada (simulado)")
-        else:
-            self.hub.status_signal.emit("Gravação CSV parada")
+        try:
+            self.hub.set_recording(checked)
+        except OSError as e:
+            self.hub.status_signal.emit(f"Não foi possível gravar o CSV: {e}")
+            self.btn_output_csv.blockSignals(True)
+            self.btn_output_csv.setChecked(False)
+            self.btn_output_csv.blockSignals(False)
+            self.switch_csv.subtitle.setText("Desligado")
 
     def _select_input(self, checked, target_page, others):
         if checked:

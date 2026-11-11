@@ -1,11 +1,13 @@
-opencv-python>=4.10.0.84
-mediapipe
-pillow
-protobuf
-pyFirmata==1.1.0
-fastapi
-uvicorn
-pyserial
-numpy
-PySide6
-pygrabber
+# Aplicação desktop (main.py) - testado com Python 3.13
+PySide6>=6.8,<7
+mediapipe>=0.10.21,<2      # usa só a API Tasks (mp.solutions foi removido nas versões novas)
+opencv-python>=4.10.0.84,<5
+numpy>=1.26,<3
+pyserial>=3.5,<4
+pyFirmata==1.1.0           # sem manutenção; o app aplica o remendo de inspect.getargspec para 3.11+
+pygrabber>=0.2; sys_platform == "win32"   # nomes das câmeras no Windows (opcional)
+pillow>=10                 # usado pelo projeto clínico da luva (src/luva)
+
+# Protótipo web local (server.py)
+fastapi>=0.110
+uvicorn>=0.29
