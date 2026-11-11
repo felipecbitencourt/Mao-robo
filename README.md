@@ -111,6 +111,10 @@ pyinstaller MaoRobotica.spec
 
 O resultado sai em `dist/MaoRobotica/`. Essa pasta é ignorada pelo Git.
 
+## 🌐 Versão Web (mao.cienciaberta.com)
+
+A pasta `web/` tem uma versão que roda inteira no navegador, sem instalar nada: câmera com MediaPipe JS, Arduino e tiara EEG por Web Serial (Chrome/Edge no computador) e uma mão virtual para quem não tem o hardware. O Arduino usa o mesmo StandardFirmata. Detalhes e deploy no Cloudflare em [`web/README.md`](web/README.md).
+
 ## 🧪 Interface Web (protótipo)
 
 O repositório contém um protótipo de front-end React/Vite (`frontend/`) alimentado por um servidor FastAPI (`server.py`), que publica telemetria por WebSocket.
