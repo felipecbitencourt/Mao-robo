@@ -55,5 +55,6 @@
     "camera_index": 0,
     "camera2_index": 1,
     "eeg_port": "COM10",
-    "camera_backend": "msmf"
+    "camera_backend": "msmf",
+    "suavizar_movimento": false
 }

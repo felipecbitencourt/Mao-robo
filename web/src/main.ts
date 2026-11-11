@@ -176,6 +176,14 @@ btnTest.addEventListener('click', async () => {
 $<HTMLInputElement>('chk-active').addEventListener('change', (e) => {
   output.active = (e.target as HTMLInputElement).checked;
 });
+// Suavização do movimento: opcional, desligada por padrão; lembrada neste navegador.
+const chkSmooth = $<HTMLInputElement>('chk-smooth');
+try { chkSmooth.checked = localStorage.getItem('mao-suavizar') === '1'; } catch { /* sem storage */ }
+output.smooth = chkSmooth.checked;
+chkSmooth.addEventListener('change', () => {
+  output.smooth = chkSmooth.checked;
+  try { localStorage.setItem('mao-suavizar', chkSmooth.checked ? '1' : '0'); } catch { /* sem storage */ }
+});
 
 // ---------- EEG ----------
 const pillEeg = $('pill-eeg');
@@ -243,7 +251,7 @@ function setAllManual(v: number) {
 }
 $('btn-open').addEventListener('click', () => setAllManual(1));
 $('btn-close').addEventListener('click', () => setAllManual(0));
-// Envia a pose atual aos servos a ~30 Hz; o lerp do HandOutput suaviza o movimento.
+// Envia a pose atual aos servos a ~30 Hz (com "Suavizar movimento" ligado, o lerp do HandOutput deixa o movimento mais lento).
 // Sem mão na câmera, a mão robótica fica parada na última pose.
 setInterval(() => {
   if (state.source !== 'camera' || state.handVisible) void output.update(state.openness);

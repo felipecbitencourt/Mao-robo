@@ -41,6 +41,7 @@ class HubController(QObject):
 
         port = self.config.get("arduino_port", "COM5")
         self.arduino = ArduinoOutput(port=port)
+        self.arduino.suavizar = bool(self.config.get("suavizar_movimento", False))
         
         # Modo de controle do EEG: 'none', 'attention', 'meditation'
         self.eeg_control_mode = 'none'
@@ -84,6 +85,11 @@ class HubController(QObject):
         
         # Conexão FPS
         self.processor.fps_signal.connect(self.fps_signal.emit)
+
+    def set_motion_smoothing(self, enabled):
+        """Liga/desliga a suavização (lentificação) do movimento dos servos."""
+        self.arduino.suavizar = bool(enabled)
+        self.config.set("suavizar_movimento", bool(enabled))
 
     def set_hand_output(self, active):
         """Ativa ou desativa o envio de comandos para o Arduino"""

@@ -155,6 +155,7 @@ class MainWindow(QMainWindow):
         self.hand_output.set_theme(t)
         self.switch_hand.switch.set_theme(t)
         self.switch_csv.switch.set_theme(t)
+        self.switch_smooth.switch.set_theme(t)
         self.spectro_plot.set_theme(t)
 
         grid = t["track"] if not self._dark_mode else "#20242C"
@@ -862,7 +863,13 @@ class MainWindow(QMainWindow):
         self.btn_output_csv = self.switch_csv.switch
         self.btn_output_hand.toggled.connect(self._toggle_output_hand)
         self.btn_output_csv.toggled.connect(self._toggle_output_csv)
+        self.switch_smooth = SwitchRow("Suavizar movimento", "")
+        self.switch_smooth.switch.setChecked(self.hub.arduino.suavizar)
+        self._update_smooth_subtitle(self.hub.arduino.suavizar)
+        self.switch_smooth.switch.toggled.connect(self._toggle_motion_smoothing)
         o_lyt.addWidget(self.switch_hand)
+        o_lyt.addWidget(divider())
+        o_lyt.addWidget(self.switch_smooth)
         o_lyt.addWidget(divider())
         o_lyt.addWidget(self.switch_csv)
         lyt.addWidget(outs)
@@ -1052,6 +1059,14 @@ class MainWindow(QMainWindow):
             "Ligado · servos seguem a abertura acima" if checked else "Desligado · servos parados")
         self.hub.set_hand_output(checked)
         self.hand_output.set_values(self.hand_output.values, active=checked)
+
+    def _update_smooth_subtitle(self, checked):
+        self.switch_smooth.subtitle.setText(
+            "Ligado · servos chegam ao alvo devagar" if checked else "Desligado · servos vão direto ao alvo")
+
+    def _toggle_motion_smoothing(self, checked):
+        self._update_smooth_subtitle(checked)
+        self.hub.set_motion_smoothing(checked)
 
     def _toggle_output_csv(self, checked):
         self.switch_csv.subtitle.setText("Gravando" if checked else "Desligado")

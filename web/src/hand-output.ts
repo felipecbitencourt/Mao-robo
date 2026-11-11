@@ -9,6 +9,8 @@ export const CLOSED_ANGLE: Record<Finger, number> = { polegar: 150, indicador: 1
 export class HandOutput {
   readonly board = new FirmataBoard();
   active = true;
+  /** Suaviza (lentifica) o movimento com lerp 0.3. Desligado: vai direto ao alvo. */
+  smooth = false;
   private pos: Record<Finger, number> = { polegar: 0, indicador: 0, medio: 0, anelar: 0, minimo: 0 };
   private busy = false;
 
@@ -24,7 +26,7 @@ export class HandOutput {
     return CLOSED_ANGLE[f] * (1 - openness);
   }
 
-  /** Move suavemente em direção ao alvo (lerp 0.3, como mover_servo_suave). */
+  /** Move em direção ao alvo: direto, ou suave (lerp 0.3, como mover_servo_suave) se `smooth`. */
   async update(o: Openness): Promise<void> {
     if (!this.board.connected || !this.active || this.busy) return;
     this.busy = true;
@@ -32,9 +34,12 @@ export class HandOutput {
       for (const f of FINGERS) {
         const target = HandOutput.target(f, o[f]);
         const diff = target - this.pos[f];
-        // lerp 0.3; perto do alvo anda 1° por vez para não parar 1° antes (arredondamento)
-        let next = Math.round(this.pos[f] + diff * 0.3);
-        if (next === this.pos[f] && Math.abs(diff) >= 1) next = this.pos[f] + Math.sign(diff);
+        let next = Math.round(target);
+        if (this.smooth) {
+          // lerp 0.3; perto do alvo anda 1° por vez para não parar 1° antes (arredondamento)
+          next = Math.round(this.pos[f] + diff * 0.3);
+          if (next === this.pos[f] && Math.abs(diff) >= 1) next = this.pos[f] + Math.sign(diff);
+        }
         if (Math.abs(next - this.pos[f]) >= 1) {
           await this.board.servoWrite(PINS[f], next);
           this.pos[f] = next;

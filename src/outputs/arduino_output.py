@@ -87,6 +87,9 @@ class ArduinoOutput(QObject):
         
         # Estado atual dos servos para suavização no modo fluido
         self.posicao_atual = {pin: 0 for pin in self.pins}
+        # Suavização (lerp) do movimento: opcional, desligada por padrão.
+        # Desligada, o servo vai direto para a posição alvo.
+        self.suavizar = False
         
         self._available_ports = []
 
@@ -192,15 +195,21 @@ class ArduinoOutput(QObject):
             print("DEBUG ARDUINO: Impossível testar - Hardware não conectado.")
 
     def mover_servo_suave(self, pino, posicao_alvo):
-        """Move o servo suavemente para a posição alvo usando lerp"""
+        """Move o servo para a posição alvo. Com self.suavizar ligado, anda só
+        30% do caminho por chamada (lerp), o que deixa o movimento mais lento."""
         if not self.board or not self.active: return
         
         max_pos = self.VALORES_FECHADOS.get(pino, 140)
         posicao_alvo = max(0, min(max_pos, posicao_alvo))
+        atual = self.posicao_atual[pino]
         
-        fator = 0.3
-        nova_pos = self.posicao_atual[pino] + (posicao_alvo - self.posicao_atual[pino]) * fator
-        nova_pos = int(nova_pos)
+        if self.suavizar:
+            nova_pos = int(round(atual + (posicao_alvo - atual) * 0.3))
+            # Perto do alvo anda 1° por vez para não parar 1° antes (arredondamento)
+            if nova_pos == atual and abs(posicao_alvo - atual) >= 1:
+                nova_pos = atual + (1 if posicao_alvo > atual else -1)
+        else:
+            nova_pos = int(round(posicao_alvo))
         
         # Move se a diferença for significativa para evitar jitter
         if abs(nova_pos - self.posicao_atual[pino]) >= 1:
