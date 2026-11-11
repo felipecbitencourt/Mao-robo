@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mão Robótica</title>
+    <meta name="description" content="Controle uma mão robótica pela webcam ou por EEG, direto do navegador." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <img src="/favicon.svg" alt="" width="32" height="32" />
+        <div>
+          <h1>Mão Robótica</h1>
+          <p class="sub">Controle pela câmera ou por EEG, direto do navegador</p>
+        </div>
+      </div>
+      <div class="hw">
+        <span class="pill" id="pill-arduino"><i></i>Arduino</span>
+        <span class="pill" id="pill-eeg"><i></i>EEG</span>
+      </div>
+    </header>
+
+    <div class="notice" id="serial-warning" hidden>
+      Este navegador não tem Web Serial, então não dá para conectar o Arduino nem a tiara EEG.
+      A câmera e a mão virtual funcionam normalmente. Para o hardware, use Chrome ou Edge no computador.
+    </div>
+
+    <main class="grid">
+      <section class="card input">
+        <div class="tabs" role="tablist">
+          <button role="tab" data-src="camera" aria-selected="true">Câmera</button>
+          <button role="tab" data-src="eeg" aria-selected="false">EEG</button>
+          <button role="tab" data-src="manual" aria-selected="false">Manual</button>
+        </div>
+
+        <div class="panel" data-panel="camera">
+          <div class="video-wrap">
+            <video id="video" playsinline muted></video>
+            <canvas id="overlay"></canvas>
+            <div class="video-empty" id="video-empty">
+              <p>Mostre a mão para a câmera e a mão robótica copia os movimentos.</p>
+              <button class="primary" id="btn-camera">Ligar câmera</button>
+            </div>
+          </div>
+          <div class="row">
+            <select id="camera-select" aria-label="Câmera"></select>
+            <button id="btn-camera-stop" disabled>Desligar</button>
+            <span class="muted" id="camera-status"></span>
+          </div>
+        </div>
+
+        <div class="panel" data-panel="eeg" hidden>
+          <p class="muted">Pareie a tiara BrainLink por Bluetooth no sistema e depois escolha a porta serial dela.</p>
+          <div class="row">
+            <button class="primary" id="btn-eeg">Conectar tiara</button>
+            <select id="eeg-mode" aria-label="Modo EEG"></select>
+          </div>
+          <div class="eeg-stats">
+            <div><span class="label">Sinal</span><strong id="eeg-signal">–</strong></div>
+            <div><span class="label">Atenção</span><strong id="eeg-att">–</strong></div>
+            <div><span class="label">Meditação</span><strong id="eeg-med">–</strong></div>
+            <div><span class="label">Foco real</span><strong id="eeg-foco">–</strong></div>
+          </div>
+          <label class="field">Ganho <input type="range" id="eeg-gain" min="1" max="10" step="0.5" value="5" /><output id="eeg-gain-out">5</output></label>
+          <p class="muted small" id="eeg-status"></p>
+          <p class="muted small">A mão só se move quando a qualidade do sinal é boa (abaixo de 50).</p>
+        </div>
+
+        <div class="panel" data-panel="manual" hidden>
+          <p class="muted">Mova cada dedo à mão, útil para testar os servos.</p>
+          <div id="manual-sliders" class="sliders"></div>
+          <div class="row">
+            <button id="btn-open">Abrir tudo</button>
+            <button id="btn-close">Fechar tudo</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card output">
+        <div class="hand-head">
+          <h2 id="gesture">Sem mão</h2>
+          <span class="muted" id="source-label">Câmera</span>
+        </div>
+        <canvas id="hand" aria-label="Mão virtual"></canvas>
+        <div id="bars" class="bars"></div>
+
+        <div class="arduino">
+          <h3>Mão robótica (Arduino)</h3>
+          <p class="muted small">O Arduino precisa estar com o StandardFirmata. Servos nos pinos 10, 9, 8, 7 e 6.</p>
+          <div class="row">
+            <button class="primary" id="btn-arduino">Conectar Arduino</button>
+            <button id="btn-test" disabled>Testar servos</button>
+            <label class="switch"><input type="checkbox" id="chk-active" checked /> Enviar movimentos</label>
+          </div>
+          <p class="muted small" id="arduino-status"></p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      Tudo roda no seu navegador. O vídeo da câmera não sai do seu computador.
+      <a href="https://github.com/felipecbitencourt/Mao-robo">Código no GitHub</a>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
