@@ -17,6 +17,7 @@ class HubController(QObject):
     discovery_finished_signal = Signal(bool)
     arduino_status_signal = Signal(bool)
     fps_signal = Signal(float)
+    eeg_lost_signal = Signal()     # A thread do EEG perdeu a conexão com a tiara
 
     def __init__(self):
         super().__init__()
@@ -169,6 +170,7 @@ class HubController(QObject):
                 self.eeg = EEGInput(port=port)
                 self.eeg.status_signal.connect(self.status_signal.emit)
                 self.eeg.data_signal.connect(self._handle_eeg_data)
+                self.eeg.connection_lost.connect(self.eeg_lost_signal.emit)
             
             self.eeg.start()
             self.status_signal.emit(f"EEG ATIVADO ({port})")
@@ -181,9 +183,11 @@ class HubController(QObject):
         """Processa predição vinda da câmera (simples ou fundida)"""
         if data.get("source") == "FUSION":
             data["source"] = "VISÃO DUAL (FUSÃO)"
+            data["source_type"] = "CAMERA"
         else:
             cam_id = data.get("cam_id", 0)
             data["source"] = f"CAMERA {cam_id + 1}"
+            data["source_type"] = "CAMERA"
             
         self._dispatch_prediction(data)
 
@@ -588,8 +592,6 @@ class HubController(QObject):
                     self._last_valid_prediction = data # Atualiza timestamp do "vazio"
             
             if should_emit:
-                # Log extremamente visível para debug
-                print(f">>> HUB DISPATCH: {source} -> '{data.get('prediction')}' (ID: {gid})")
                 self.prediction_signal.emit(data)
                 
                 # Controle do Arduino
@@ -643,21 +645,26 @@ class HubController(QObject):
             self.status_signal.emit("Sistema iniciado")
 
     def stop(self):
-        if self.running:
-            self.running = False
-            
-            if self.camera:
-                self.camera.stop()
-                self.camera.wait() 
-            if self.camera2:
-                self.camera2.stop()
-                self.camera2.wait()
-            if self.glove:
-                self.glove.stop()
-                self.glove.wait() 
-            
-            self.processor.stop() # Para processamento
-            self.status_signal.emit("Sistema parado")
+        """Para todas as fontes e libera o hardware. Pode ser chamado mais de uma vez."""
+        self.running = False
+
+        for src in (self.camera, self.camera2, self.glove, self.eeg):
+            if src is not None:
+                try:
+                    src.stop()
+                    src.wait(3000)
+                except Exception as e:
+                    print(f"[Hub] Erro ao parar {type(src).__name__}: {e}")
+
+        self.processor.stop()
+
+        try:
+            self.arduino.active = False
+            self.arduino.disconnect()
+        except Exception as e:
+            print(f"[Hub] Erro ao desconectar Arduino: {e}")
+
+        self.status_signal.emit("Sistema parado")
 
     def calibrate(self):
         self.status_signal.emit("Iniciando calibração...")

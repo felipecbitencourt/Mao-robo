@@ -5,12 +5,14 @@ from hardware.eeg_brainlink import BrainLinkEEG, BrainLinkData
 class EEGInput(QThread):
     data_signal = Signal(dict)
     status_signal = Signal(str)
+    connection_lost = Signal()  # Emitido quando a tiara cai depois de conectada
 
     def __init__(self, port='', baudrate=57600):
         super().__init__()
         self.port = port
         self.baudrate = baudrate
         self.running = False
+        self._stop_requested = False
         self.eeg = None
         self.auto_scan = True # Modificado para True para descobrir o Brainlink
         self.last_emit = 0
@@ -23,9 +25,6 @@ class EEGInput(QThread):
             return
             
         self.last_emit = now
-        
-        # Debug log para o EEG apenas de vez em quando
-        print(f"DEBUG EEG: Att: {data.attention:3d} | Med: {data.meditation:3d} | Sig: {data.signal:3d}")
         
         self.data_signal.emit({
             "attention": data.attention,
@@ -50,6 +49,7 @@ class EEGInput(QThread):
             print("DEBUG EEG_INPUT: Já conectado e rodando. Ignorando novo scan.")
             return
 
+        self._stop_requested = False
         import serial.tools.list_ports
         available = serial.tools.list_ports.comports()
         
@@ -70,6 +70,8 @@ class EEGInput(QThread):
             self.status_signal.emit("EEG: Nenhuma porta bluetooth/brainlink encontrada.")
 
         for port in ports_to_try:
+            if self._stop_requested:
+                break
             try:
                 print(f"[DEBUG EEG_INPUT] Iniciando tentativa na porta: {port}")
                 self.status_signal.emit(f"Tentando EEG em {port}...")
@@ -100,6 +102,9 @@ class EEGInput(QThread):
                         self.eeg.disconnect()
                         continue
                         
+                    if self._stop_requested:
+                        self.eeg.disconnect()
+                        break
                     self.eeg.add_callback(self._on_data)
                     self.port = port
                     self.status_signal.emit(f"BrainLink conectado ({port})")
@@ -114,30 +119,46 @@ class EEGInput(QThread):
                 continue
         
         if self.running:
+            lost = False
             last_debug = time.time()
             bytes_read_total = 0
-            while self.running:
-                if self.eeg and self.eeg.serial and self.eeg.serial.is_open:
-                    if self.eeg.serial.in_waiting > 0:
-                        bytes_read_total += self.eeg.serial.in_waiting
-                        
-                self.eeg.read_once() 
-                time.sleep(0.01)
-                
-                if time.time() - last_debug > 2.0:
-                    if bytes_read_total == 0:
-                        print(f"[DEBUG EEG_INPUT] ALERTA: Conexão mantida na porta {self.port}, mas o fluxo de dados do bluetooth parou!")
-                    else:
-                        pass # Silenciado quando ocorrendo corretamente
-                    bytes_read_total = 0
-                    last_debug = time.time()
-        else:
+            try:
+                while self.running:
+                    if self.eeg and self.eeg.serial and self.eeg.serial.is_open:
+                        if self.eeg.serial.in_waiting > 0:
+                            bytes_read_total += self.eeg.serial.in_waiting
+                    elif self.running:
+                        raise OSError("porta serial fechada")
+
+                    self.eeg.read_once()
+                    time.sleep(0.01)
+
+                    if time.time() - last_debug > 2.0:
+                        if bytes_read_total == 0:
+                            print(f"[DEBUG EEG_INPUT] ALERTA: Conexão mantida na porta {self.port}, mas o fluxo de dados do bluetooth parou!")
+                        bytes_read_total = 0
+                        last_debug = time.time()
+            except Exception as e:
+                # Tiara desligada, Bluetooth caiu, cabo removido...
+                if self.running:
+                    lost = True
+                    print(f"[DEBUG EEG_INPUT] Conexão perdida na porta {self.port}: {e}")
+            finally:
+                self.running = False
+                if self.eeg:
+                    self.eeg.disconnect()
+            if lost:
+                self.status_signal.emit("EEG: conexão perdida")
+                self.connection_lost.emit()
+        elif not self._stop_requested:
             self.status_signal.emit("Falha ao encontrar BrainLink.")
-            self.stop()
 
     def stop(self):
+        """Pede para a thread parar. Fecha a porta só depois que a leitura terminou."""
+        self._stop_requested = True
         self.running = False
+        if QThread.currentThread() is not self and self.isRunning():
+            self.wait(5000)
         if self.eeg:
             self.eeg.disconnect()
         self.status_signal.emit("EEG desconectado")
-        self.quit()

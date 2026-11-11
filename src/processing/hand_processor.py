@@ -2,8 +2,8 @@ import mediapipe as mp
 import cv2
 import numpy as np
 import time
-import queue
 import os
+import threading
 from PySide6.QtCore import QObject, QThread, Signal
 
 from core.paths import resource_path
@@ -34,7 +34,15 @@ class HandProcessor(QThread):
 
     def __init__(self, model_path="models/hand_landmarker.task"):
         super().__init__()
-        self.frame_queue = queue.Queue(maxsize=1)
+        # Último frame pendente de cada câmera (descarta frames velhos sem
+        # deixar uma câmera monopolizar o processamento na visão dual)
+        self._pending = {}
+        self._pending_lock = threading.Lock()
+        # Um detector MediaPipe por câmera: no modo VIDEO o detector rastreia a
+        # mão entre frames consecutivos, então não pode receber frames de duas
+        # câmeras intercalados. Cada um também precisa de timestamps crescentes.
+        self._detectors = {}
+        self._last_ts = {}
         self.running = False
         self.model_path = resource_path(model_path)
         self._fps_buffer = [] # Buffer para cálculo de FPS
@@ -68,84 +76,113 @@ class HandProcessor(QThread):
         }
 
     def process_frame(self, frame, source_id=0):
-        """Enfileira frame para processamento com ID de origem"""
-        if not self.frame_queue.full():
-            self.frame_queue.put((frame, source_id))
+        """Guarda o frame mais recente de cada câmera para processamento"""
+        with self._pending_lock:
+            self._pending[source_id] = frame
 
-    def run(self):
-        # Carrega o modelo como buffer para evitar problemas com caracteres especiais no caminho (ex: "Códigos")
-        with open(self.model_path, 'rb') as f:
-            model_buffer = f.read()
-
-        # Inicializa o detector
+    def _create_detector(self):
         options = self.HandLandmarkerOptions(
-            base_options=self.BaseOptions(model_asset_buffer=model_buffer),
+            base_options=self.BaseOptions(model_asset_buffer=self._model_buffer),
             running_mode=self.VisionRunningMode.VIDEO,
             num_hands=1,
             min_hand_detection_confidence=0.5,
             min_hand_presence_confidence=0.5,
             min_tracking_confidence=0.5
         )
-        self.detector = self.HandLandmarker.create_from_options(options)
+        return self.HandLandmarker.create_from_options(options)
+
+    def _detector_for(self, source_id):
+        det = self._detectors.get(source_id)
+        if det is None:
+            det = self._create_detector()
+            self._detectors[source_id] = det
+        return det
+
+    def _next_timestamp(self, source_id):
+        """Timestamp em ms estritamente crescente por câmera (exigido pelo modo VIDEO)"""
+        ts = int(time.time() * 1000)
+        last = self._last_ts.get(source_id, -1)
+        if ts <= last:
+            ts = last + 1
+        self._last_ts[source_id] = ts
+        return ts
+
+    def run(self):
+        # Carrega o modelo como buffer para evitar problemas com caracteres especiais no caminho (ex: "Códigos")
+        with open(self.model_path, 'rb') as f:
+            self._model_buffer = f.read()
+
+        with self._pending_lock:
+            self._pending.clear()
 
         self.running = True
         while self.running:
-            if not self.frame_queue.empty() and self.detector:
+            with self._pending_lock:
+                batch = list(self._pending.items())
+                self._pending.clear()
+
+            if not batch:
+                time.sleep(0.005)
+                continue
+
+            for source_id, frame in batch:
+                if not self.running:
+                    break
                 try:
-                    frame_data = self.frame_queue.get()
-                    if isinstance(frame_data, tuple):
-                        frame, source_id = frame_data
-                    else:
-                        frame, source_id = frame_data, 0
-                    
-                    # Fallback para o frame caso a análise falhe
                     prediction_data = None
-                    processed_frame = frame.copy()
-                    
+                    processed_frame = frame
+
                     try:
-                        prediction_data, processed_frame = self._analyze_frame(frame)
+                        detector = self._detector_for(source_id)
+                        prediction_data, processed_frame = self._analyze_frame(frame, detector, source_id)
                     except Exception as e:
                         print(f"DEBUG ANALYSIS ERROR: {e}")
-                    
-                    if not self.running: break # Interromper se parou durante análise
-                    
+
+                    if not self.running:
+                        break
+
                     # Emite o frame processado (SEMPRE)
                     self.processed_frame_signal.emit(processed_frame, source_id)
-                    
+
                     # Salva na memória e funde resultados se a análise teve sucesso
                     if prediction_data:
-                        prediction_data["cam_id"] = source_id 
+                        prediction_data["cam_id"] = source_id
                         self.latest_predictions[source_id] = prediction_data
-                        
-                        # Realiza a fusão de todas as câmeras ativas
+
                         fused_data = self._fuse_predictions()
                         if fused_data:
                             self.prediction_signal.emit(fused_data)
                 except RuntimeError:
                     # Ocorre quando o MediaPipe fecha o pool antes do loop terminar
+                    self.running = False
                     break
                 except Exception as e:
                     print(f"DEBUG LOOP ERROR: {e}")
-            else:
-                time.sleep(0.01)
-        
-        if self.detector:
-            self.detector.close()
+
+        for det in self._detectors.values():
+            try:
+                det.close()
+            except Exception:
+                pass
+        self._detectors.clear()
+        self._last_ts.clear()
+        self.latest_predictions.clear()
 
     def stop(self):
         self.running = False
         self.wait()
 
-    def _analyze_frame(self, frame):
+    def _analyze_frame(self, frame, detector, source_id=0):
         """Analisa frame e desenha pontos como no main_fluido_v2.py"""
-        if frame is None or self.detector is None: return
+        if frame is None or detector is None:
+            return None, frame
         
         h, w, _ = frame.shape
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        timestamp_ms = int(time.time() * 1000)
-        
-        result = self.detector.detect_for_video(mp_image, timestamp_ms)
+        timestamp_ms = self._next_timestamp(source_id)
+
+        result = detector.detect_for_video(mp_image, timestamp_ms)
         
         # Cálculo de FPS
         now = time.time()
@@ -245,15 +282,15 @@ class HandProcessor(QThread):
                 "gesture_id": -1,
                 "confidence": 0,
                 "fingers": {},
-                "source": "FUSION",
+                "source": "CAMERA",
                 "timestamp": now
             }
             
-        # Se só tem um canal ativo, usa ele direto mas marca como FUSION
+        # Só um canal ativo: repassa a predição dessa câmera (não é fusão)
         if len(active_sources) == 1:
-            fused = self.latest_predictions[active_sources[0]].copy()
-            fused["source"] = "FUSION"
-            return fused
+            single = self.latest_predictions[active_sources[0]].copy()
+            single["source"] = "CAMERA"
+            return single
 
         # Fusão Multi-Câmera (Lógica: Média Ponderada Bayesiana)
         fused_fingers = {}
@@ -270,11 +307,11 @@ class HandProcessor(QThread):
             elif conf1 > 2.5 * conf0:
                 active_sources = [active_sources[1]]
 
-        # Se após o filtro restou apenas uma, retorna ela (com flag FUSION)
+        # Se após o filtro restou apenas uma, repassa a predição dela
         if len(active_sources) == 1:
-            fused = self.latest_predictions[active_sources[0]].copy()
-            fused["source"] = "FUSION"
-            return fused
+            single = self.latest_predictions[active_sources[0]].copy()
+            single["source"] = "CAMERA"
+            return single
 
         # Média Ponderada para as câmeras restantes
         total_conf = sum([self.latest_predictions[sid]["confidence"] for sid in active_sources])

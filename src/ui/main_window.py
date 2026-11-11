@@ -183,6 +183,7 @@ class MainWindow(QMainWindow):
         self.hub.glove_signal.connect(self.update_glove_data)
         self.hub.eeg_signal.connect(self.update_eeg_data)
         self.hub.discovery_finished_signal.connect(self._on_discovery_finished)
+        self.hub.eeg_lost_signal.connect(self._on_eeg_lost)
 
         # Gamificação EEG (Desafio de 60s)
         self.eeg_test_active = False
@@ -425,6 +426,9 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         print("Fechando aplicação... parando threads.")
         self.hub.stop()
+        # Devolve stdout/stderr originais: o console da janela deixa de existir
+        sys.stdout = self.stdout_redirector.stream
+        sys.stderr = self.stderr_redirector.stream
         event.accept()
 
     # ── Construção da UI ──────────────────────────────────────── #
@@ -1222,6 +1226,8 @@ class MainWindow(QMainWindow):
         self.log_terminal = QTextEdit()
         self.log_terminal.setReadOnly(True)
         self.log_terminal.setLineWrapMode(QTextEdit.NoWrap)
+        # Limita o histórico do console para não crescer sem fim em sessões longas
+        self.log_terminal.document().setMaximumBlockCount(2000)
         t = self._current_theme()
         self.log_terminal.setStyleSheet(f"""
             QTextEdit {{
@@ -1452,6 +1458,12 @@ class MainWindow(QMainWindow):
         self.btn_eeg._update_style(checked)
         self.hub.set_eeg_active(checked)
 
+    def _on_eeg_lost(self):
+        """A tiara caiu: desliga o botão para a UI não mostrar o EEG como ativo"""
+        if self.btn_eeg.isChecked():
+            self.btn_eeg.setChecked(False)
+        self.update_status_bar("EEG: conexão perdida")
+
     def _set_eeg_mode(self, mode):
         self.hub.eeg_control_mode = mode
 
@@ -1498,8 +1510,6 @@ class MainWindow(QMainWindow):
         source = data.get("source", "UNKNOWN")
         fingers = data.get("fingers", None)
 
-        print(f"*** UI RECEIVE: {pred} FROM {source} ***")
-
         self.result_label.setText(pred)
         self.source_label.setText(f"FONTE: {source}  ·  {conf}%")
         self.gesture_display.update_gesture(gid)
@@ -1507,13 +1517,14 @@ class MainWindow(QMainWindow):
         color = "#10B981" if conf > 85 else t['text_bright']
         self.result_label.setStyleSheet(f"font-size:36px; font-weight:bold; color:{color};")
 
-        if fingers and source == "CAMERA":
+        if fingers and data.get("source_type") == "CAMERA":
             keys = ['polegar', 'indicador', 'medio', 'anelar', 'minimo']
             for i, k in enumerate(keys):
                 if i < len(self.cam_bars):
                     val = fingers.get(k, 0)
-                    if k == 'polegar': 
-                        pct = val
+                    if k == 'polegar':
+                        # Mesma faixa usada no Arduino: razão 0.5 (fechado) a 1.3 (aberto)
+                        pct = max(0, min(100, (val - 50) / 80 * 100))
                     else:
                         pct = max(0, min(100, (val - 60) / 120 * 100))
                     self.cam_bars[i].setValue(int(pct))
@@ -1566,9 +1577,6 @@ class MainWindow(QMainWindow):
         med = data.get("meditation", 0)
         sig = data.get("signal", 200)
 
-        # Log diagnóstico refinado (apenas quando há sinal)
-        if sig < 200:
-             print(f"DEBUG UI EEG: Data flow active -> Att:{att} Med:{med} Sig:{sig}")
 
         # Gamificação State Machine Hook
         if getattr(self, "eeg_test_active", False):
